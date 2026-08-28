@@ -37,7 +37,8 @@ find_compatible_python() {
 BASE_PYTHON="$(find_compatible_python)"
 echo "Using $BASE_PYTHON to verify local environments."
 
-if ! .venv/bin/python -c 'import PyQt6, audio_playground' >/dev/null 2>&1; then
+if ! .venv/bin/python -c 'import PyQt6, audio_playground' >/dev/null 2>&1 || \
+  [[ ! -x .venv/bin/timbrelab ]]; then
   echo "PyQt environment is missing or incomplete; setting it up now."
   PYTHON_BIN="$BASE_PYTHON" "$SETUP_SCRIPT" ui
 fi
@@ -65,7 +66,7 @@ if [[ "$MODE" == "--setup-only" ]]; then
   exit 0
 fi
 
-echo "Starting AI Audio Playground…"
+echo "Starting TimbreLab…"
 if [[ "$MODE" == "--dev" ]]; then
   echo "Development hot reload is enabled."
   export AUDIO_PLAYGROUND_HOT_RELOAD=1

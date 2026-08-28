@@ -67,4 +67,4 @@ fi
 
 echo
 echo "Setup complete. Start the app with:"
-echo "  .venv/bin/python -m audio_playground"
+echo "  .venv/bin/timbrelab"

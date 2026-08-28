@@ -6,6 +6,7 @@ import random
 import re
 from typing import Any
 
+from audio_playground.config import DEFAULT_GENERATION_SEED
 from audio_playground.workers.common import (
     emit,
     monitor_model_download,
@@ -130,7 +131,7 @@ def generate(request: dict[str, Any]) -> str:
     import torch
 
     model = _load_model()
-    seed = int(request.get("seed", 42))
+    seed = int(request.get("seed", DEFAULT_GENERATION_SEED))
     _seed_random_generators(torch, np, seed)
     dialogue_segments = request.get("segments")
     is_dialogue = isinstance(dialogue_segments, list)

@@ -84,3 +84,19 @@ def test_all_built_in_presets_have_an_explicit_default_seed() -> None:
         config["seed"] == VoicePresetStore.DEFAULT_SEED
         for config in presets.values()
     )
+
+
+def test_previous_default_seed_is_migrated_once(tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    store = VoicePresetStore(settings)
+    store.save("Old default", {"mode": "design", "seed": 42})
+    store.save("Custom seed", {"mode": "design", "seed": 123})
+
+    store.ensure_defaults()
+
+    assert store.all()["Old default"]["seed"] == 9999
+    assert store.all()["Custom seed"]["seed"] == 123
+
+    store.save("Intentionally 42", {"mode": "design", "seed": 42})
+    store.ensure_defaults()
+    assert store.all()["Intentionally 42"]["seed"] == 42

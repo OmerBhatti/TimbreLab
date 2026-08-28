@@ -7,7 +7,7 @@ import traceback
 from pathlib import Path
 
 from PyQt6.QtCore import QSettings, QTime, QUrl, Qt
-from PyQt6.QtGui import QCloseEvent, QFont, QKeySequence, QShortcut
+from PyQt6.QtGui import QCloseEvent, QFont, QIcon, QKeySequence, QPixmap, QRegion, QShortcut
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -43,7 +43,15 @@ from audio_playground.audio_utils import (
     normalize_emotion_tags,
     output_path,
 )
-from audio_playground.config import OMNIVOICE_PYTHON, OUTPUT_DIR, SFX_PYTHON
+from audio_playground.config import (
+    APP_ICON_PATH,
+    DEFAULT_GENERATION_SEED,
+    LOGO_PATH,
+    OMNIVOICE_PYTHON,
+    OUTPUT_DIR,
+    PRODUCT_NAME,
+    SFX_PYTHON,
+)
 from audio_playground.dialogue import parse_dialogue, voice_instruction_from_preset
 from audio_playground.tag_text_edit import TagTextEdit
 from audio_playground.voice_presets import VoicePresetStore
@@ -53,7 +61,13 @@ from audio_playground.worker_client import WorkerClient
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("AI Audio Playground")
+        self.setWindowTitle(PRODUCT_NAME)
+        self.logo_pixmap = self._load_logo_pixmap()
+        app_icon = QIcon(str(APP_ICON_PATH))
+        if not app_icon.isNull():
+            self.setWindowIcon(app_icon)
+        elif not self.logo_pixmap.isNull():
+            self.setWindowIcon(QIcon(self.logo_pixmap))
         self.resize(1180, 820)
         self.setMinimumSize(860, 640)
         self.preset_store = VoicePresetStore(QSettings())
@@ -65,7 +79,7 @@ class MainWindow(QMainWindow):
         self._logs_auto_opened = False
         self._preview_kind = "Audio"
 
-        self.session_files = tempfile.TemporaryDirectory(prefix="ai-audio-playground-")
+        self.session_files = tempfile.TemporaryDirectory(prefix="timbrelab-")
         self.session_dir = Path(self.session_files.name)
         self.tts_worker = WorkerClient(
             OMNIVOICE_PYTHON, "audio_playground.workers.omnivoice_worker", self
@@ -89,15 +103,18 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(22, 18, 22, 18)
         outer.setSpacing(12)
 
-        title = QLabel("AI Audio Playground")
+        title = QLabel()
         title.setObjectName("title")
-        subtitle = QLabel(
-            "Emotional speech and multi-speaker dialogue with OmniVoice · "
-            "Sound effects with AudioLDM"
-        )
-        subtitle.setObjectName("subtitle")
+        title.setAccessibleName(PRODUCT_NAME)
+        if self.logo_pixmap.isNull():
+            title.setText(PRODUCT_NAME)
+        else:
+            title.setPixmap(
+                self.logo_pixmap.scaledToHeight(
+                    54, Qt.TransformationMode.SmoothTransformation
+                )
+            )
         outer.addWidget(title)
-        outer.addWidget(subtitle)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_tts_tab(), "  Emotional TTS  ")
@@ -118,6 +135,14 @@ class MainWindow(QMainWindow):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(self._generate_current_tab)
             self.generate_shortcuts.append(shortcut)
+
+    @staticmethod
+    def _load_logo_pixmap() -> QPixmap:
+        pixmap = QPixmap(str(LOGO_PATH))
+        if pixmap.isNull():
+            return pixmap
+        visible_bounds = QRegion(pixmap.mask()).boundingRect()
+        return pixmap.copy(visible_bounds) if visible_bounds.isValid() else pixmap
 
     @staticmethod
     def _scrollable(page: QWidget) -> QScrollArea:
@@ -228,7 +253,7 @@ class MainWindow(QMainWindow):
         self.steps.setValue(64)
         self.tts_seed = QSpinBox()
         self.tts_seed.setRange(0, 2_147_483_647)
-        self.tts_seed.setValue(42)
+        self.tts_seed.setValue(DEFAULT_GENERATION_SEED)
         self._add_help_row(
             form,
             "Voice mode",
@@ -400,7 +425,7 @@ class MainWindow(QMainWindow):
         self.sfx_steps.setToolTip("More steps can improve detail but take longer to render.")
         self.sfx_seed = QSpinBox()
         self.sfx_seed.setRange(0, 2_147_483_647)
-        self.sfx_seed.setValue(42)
+        self.sfx_seed.setValue(DEFAULT_GENERATION_SEED)
         self._add_help_row(
             form,
             "Duration",
@@ -526,7 +551,7 @@ class MainWindow(QMainWindow):
         )
         self.dialogue_seed = QSpinBox()
         self.dialogue_seed.setRange(0, 2_147_483_647)
-        self.dialogue_seed.setValue(42)
+        self.dialogue_seed.setValue(DEFAULT_GENERATION_SEED)
         self.dialogue_seed.setToolTip(
             "Random starting value. Reuse the same seed, script, and presets for repeatable dialogue."
         )
@@ -561,7 +586,11 @@ class MainWindow(QMainWindow):
         self.play_button.clicked.connect(self._toggle_playback)
         self.output_label = QLabel("No audio generated yet")
         self.output_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.download_button = QPushButton("Download audio…")
+        self.download_button = QPushButton()
+        self.download_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)
+        )
+        self.download_button.setFixedSize(48, 40)
         self.download_button.setEnabled(False)
         self.download_button.setToolTip("Save the temporary preview to a permanent WAV file")
         self.download_button.clicked.connect(self._download_audio)
@@ -795,7 +824,7 @@ class MainWindow(QMainWindow):
         self.voice_style.setCurrentIndex(style_index if style_index >= 0 else 0)
         self.speed.setValue(float(config.get("speed", 1.0)))
         self.steps.setValue(int(config.get("steps", 32)))
-        self.tts_seed.setValue(int(config.get("seed", 42)))
+        self.tts_seed.setValue(int(config.get("seed", DEFAULT_GENERATION_SEED)))
         self.status_label.setText(f'Voice preset "{name}" applied.')
 
     @staticmethod
@@ -1047,7 +1076,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.status_label.setText("Download failed")
             QMessageBox.critical(
-                self, "AI Audio Playground", f"Could not download audio: {exc}"
+                self, PRODUCT_NAME, f"Could not download audio: {exc}"
             )
             return
         self.status_label.setText(f"Downloaded to {destination}")
@@ -1055,7 +1084,7 @@ class MainWindow(QMainWindow):
 
     def _show_error(self, message: str) -> None:
         self.status_label.setText("Generation failed")
-        QMessageBox.critical(self, "AI Audio Playground", message)
+        QMessageBox.critical(self, PRODUCT_NAME, message)
 
     def _toggle_playback(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:

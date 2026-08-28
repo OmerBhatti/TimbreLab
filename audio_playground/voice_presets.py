@@ -5,14 +5,18 @@ from typing import Any
 
 from PyQt6.QtCore import QSettings
 
+from audio_playground.config import DEFAULT_GENERATION_SEED
+
 
 class VoicePresetStore:
     """Persistent named voice configurations backed by QSettings."""
 
-    DEFAULT_SEED = 42
+    DEFAULT_SEED = DEFAULT_GENERATION_SEED
     SETTINGS_KEY = "voice_presets/v1"
     DEFAULTS_SEEDED_KEY = "voice_presets/defaults_v1_seeded"
     ADDITIONAL_DEFAULTS_SEEDED_KEY = "voice_presets/defaults_v2_seeded"
+    DEFAULT_SEED_MIGRATED_KEY = "voice_presets/default_seed_9999_migrated"
+    LEGACY_DEFAULT_SEED = 42
     DEFAULT_PRESETS = {
         "male-narrator": {
             "mode": "design",
@@ -156,6 +160,12 @@ class VoicePresetStore:
             if "seed" not in config:
                 config["seed"] = self.DEFAULT_SEED
                 changed = True
+        if not self.settings.value(self.DEFAULT_SEED_MIGRATED_KEY, False, type=bool):
+            for config in presets.values():
+                if config.get("seed") == self.LEGACY_DEFAULT_SEED:
+                    config["seed"] = self.DEFAULT_SEED
+                    changed = True
+            self.settings.setValue(self.DEFAULT_SEED_MIGRATED_KEY, True)
         if changed:
             self.settings.setValue(self.SETTINGS_KEY, json.dumps(presets, sort_keys=True))
         self.settings.sync()

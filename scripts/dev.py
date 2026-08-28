@@ -12,7 +12,7 @@ def main() -> int:
         result = subprocess.run([sys.executable, "-m", "audio_playground"], check=False)
         if result.returncode != HOT_RELOAD_EXIT_CODE:
             return result.returncode
-        print("Source changed. Restarting AI Audio Playground…", flush=True)
+        print("Source changed. Restarting TimbreLab…", flush=True)
 
 
 if __name__ == "__main__":

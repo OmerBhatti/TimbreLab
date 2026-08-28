@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
+from audio_playground.config import DEFAULT_GENERATION_SEED
 from audio_playground.workers.common import emit, monitor_model_download, monitor_phase, run_worker
 
 MODEL_ID = "cvssp/audioldm-s-full-v2"
@@ -105,7 +106,7 @@ def generate(request: dict[str, Any]) -> str:
     duration = _clamp_duration(request.get("duration", 5.0))
     guidance = float(request.get("guidance", 2.5))
     inference_steps = int(request.get("inference_steps", 25))
-    seed = int(request.get("seed", 42))
+    seed = int(request.get("seed", DEFAULT_GENERATION_SEED))
     generator = _seeded_generator(torch, _device, seed)
     emit(
         "status",

@@ -1,17 +1,35 @@
-# AI Audio Playground
+<p align="center">
+  <img src="assets/timbrelab-banner.png" alt="TimbreLab" width="420">
+</p>
 
-A local PyQt desktop app with two independently loaded AI audio engines:
+<p align="center"><em>Shape voices, dialogue, and sound.</em></p>
+
+A local PyQt6 desktop studio for speech, multi-speaker dialogue, and generated
+sound effects. It uses two independently loaded AI audio engines:
 
 - **OmniVoice** for multilingual TTS, voice design, and supported expressive tags.
 - **AudioLDM Small v2** for prompt-based sound effects and environmental audio.
 
-The engines use separate Python environments because their official PyTorch requirements conflict. They run as persistent background workers, so the UI stays responsive and each model is loaded only once per session. Sound-effect generation is handled by a Diffusers-based AudioLDM worker.
+The engines use separate Python environments because their PyTorch dependency
+stacks differ. They run as persistent background processes, keeping the UI
+responsive and loading each model only once per session.
+
+## Features
+
+- Emotional and multilingual TTS with inline OmniVoice expression cues
+- Multi-speaker dialogue assembled from saved voice presets
+- Prompt-based SFX generation with AudioLDM Small v2
+- Searchable expression and speaker autocomplete
+- Editable voice presets with reproducible seeds
+- Temporary audio previews with explicit download-to-save behavior
+- Estimated progress, detailed live logs, and a Stop button during generation
+- Automatic environment setup, development hot reload, and safe model shutdown
 
 ## Requirements
 
 - Python 3.10 or 3.11 (3.11 is recommended)
 - `ffmpeg`
-- Plenty of free disk space for Python packages and downloaded model weights
+- Several gigabytes of free disk space for environments and model weights
 - A capable GPU, or an Apple Silicon Mac with ample unified memory, is strongly recommended
 
 AudioLDM Small v2 is a 421M-parameter latent diffusion model. It runs through
@@ -83,17 +101,30 @@ The setup creates three local environments:
 
 ## Run
 
-Hover any field name marked with `ⓘ` (or the field itself) to see a short explanation
-of what the setting controls and how it affects generation.
-
 ```bash
 .venv/bin/python -m audio_playground
 ```
 
-The first generation with either engine downloads its pretrained weights. Progress messages appear at the bottom of the window. Generated WAV files are temporary previews until **Download audio** is pressed.
+You can also use the installed console entry point:
 
-The application opens maximized by default. Use the standard window control to
-restore it to a smaller resizable window when needed.
+```bash
+.venv/bin/timbrelab
+```
+
+The existing `ai-audio-playground` command and `audio_playground` Python module
+remain available for backward compatibility.
+
+The application opens maximized. Hover a field marked with `ⓘ`, or the field
+itself, for a concise explanation of its behavior. Use the normal window control
+to restore a smaller resizable window.
+
+The first generation with either engine may download pretrained weights. Live
+status, estimated progress, and detailed logs appear in the bottom panel. The
+**Stop** button is visible only while work is active.
+
+Generated WAV files are session-scoped temporary previews. Select **Download audio…**
+to choose a permanent destination; previews that were not downloaded
+are removed when the app closes.
 
 Use **Ctrl+Enter** on Linux/Windows or **Command+Enter** on macOS to generate
 from the active tab. The app remembers the selected tab between launches. Logs
@@ -113,12 +144,14 @@ Voice configurations can be saved under a custom name and reapplied from the
 speaking speed, diffusion steps, and seed. Loading a preset restores its seed,
 and saving or replacing one stores the currently selected seed.
 
-Set **Seed** to a fixed number to reproduce speech with the same text and voice
-settings. Dialogue has its own seed and uses one deterministic random sequence
-for all turns.
+The main speech defaults are speed `0.90`, 64 diffusion steps, and seed `9999`.
+Seed accepts values from `0` through `2,147,483,647`. Reusing the same text,
+voice configuration, generation settings, seed, runtime, and hardware gives a
+repeatable result. Different hardware or PyTorch versions can still introduce
+small numerical differences.
 
 On first launch, the app creates editable starter presets. Each starts with seed
-`42`, which can be changed and saved:
+`9999`, which can be changed and saved:
 
 | Preset | Voice configuration |
 | --- | --- |
@@ -131,8 +164,10 @@ On first launch, the app creates editable starter presets. Each starts with seed
 | `elderly-female-storyteller` | Female, elderly, low pitch, British accent, normal, speed 0.9, 64 steps |
 | `energetic-female-host` | Female, young adult, high pitch, American accent, normal, speed 1.1, 48 steps |
 
-Existing presets with either name are preserved. The starter presets are seeded
-only once, so deleting one does not make it reappear on the next launch.
+Existing presets with these names are preserved. Starter presets are installed
+only once, so deleting one does not make it reappear. Presets created with the
+previous default seed are migrated once from `42` to `9999`; other custom seeds
+remain unchanged.
 
 ## Multi-speaker dialogue
 
@@ -155,6 +190,10 @@ continue typing to filter the configured names, then choose one to insert
 editor. The app renders every line with its assigned preset, inserts a short pause
 between turns, and combines the result into one temporary audio preview.
 
+Dialogue requires at least two configured speakers. Its editable seed defaults
+to `9999` and controls one deterministic random sequence across all rendered
+turns.
+
 ## Sound-effect controls
 
 Open **SFX & Effects**, describe the sound, and select **Generate sound effect**.
@@ -166,10 +205,11 @@ AudioLDM accepts descriptive prompts such as:
 - **Duration** defaults to 5 seconds and supports generated clips from 1 to 30 seconds.
 - **Prompt guidance** controls how strongly the result follows the description.
   The default of 2.5 is a useful starting point; high values may reduce variety.
-- **Diffusion steps** trade speed for refinement. Start with 25 and increase only
-  when the extra generation time is worthwhile.
+- **Diffusion steps** range from 8 to 256 and default to 128. More steps may add
+  detail but increase rendering time.
 - **Seed** controls AudioLDM's starting noise. The same seed, prompt, duration,
   guidance, and steps reproduce the same effect on the same runtime and hardware.
+  It defaults to `9999` and remains editable.
 
 The first SFX request downloads approximately 1.7 GB of AudioLDM weights. The
 worker then stays loaded for later requests during the same app session. The log
@@ -190,10 +230,14 @@ AUDIO_PLAYGROUND_OUTPUT_DIR=/path/to/outputs \
 ## Tests
 
 ```bash
-.venv/bin/pytest
+.venv/bin/python -m pytest -q
 ```
 
-The tests cover request-independent utility behavior. Full model generation is an integration check because it requires multi-gigabyte model downloads and suitable hardware.
+The automated suite covers expression normalization, safe output naming,
+dialogue parsing, voice-preset persistence and migration, deterministic seed
+wiring, device selection, download progress helpers, and hot-reload discovery.
+Full model generation remains a manual integration check because it requires
+multi-gigabyte downloads and suitable hardware.
 
 ## Common issues
 
@@ -203,3 +247,4 @@ The tests cover request-independent utility behavior. Full model generation is a
 - **Slow first generation:** both workers download weights on first use and cache them through Hugging Face.
 - **Download remains at `0/N`:** the outer Hugging Face counter only advances after a complete model blob finishes. The live log reports cached bytes and transfer activity instead. The app disables the Xet downloader so interrupted downloads resume through standard HTTP. Supplying an optional `HF_TOKEN` environment variable may improve Hugging Face rate limits.
 - **AudioLDM appears idle:** the live log emits timed heartbeats for imports, model preparation, diffusion-step percentages, and WAV writing. A download with no cache growth for two minutes is explicitly labeled as a possible stall.
+- **The app used to crash on close:** current shutdown logic stops playback and both worker processes before Qt destroys the window. If this still occurs, include the terminal output when reporting it.
