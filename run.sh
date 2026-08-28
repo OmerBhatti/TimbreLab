@@ -5,8 +5,8 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_SCRIPT="$PROJECT_DIR/scripts/setup.sh"
 MODE="${1:-run}"
 
-if [[ "$MODE" != "run" && "$MODE" != "--setup-only" ]]; then
-  echo "Usage: $0 [--setup-only]" >&2
+if [[ "$MODE" != "run" && "$MODE" != "--setup-only" && "$MODE" != "--dev" ]]; then
+  echo "Usage: $0 [--setup-only|--dev]" >&2
   exit 1
 fi
 
@@ -66,4 +66,9 @@ if [[ "$MODE" == "--setup-only" ]]; then
 fi
 
 echo "Starting AI Audio Playground…"
+if [[ "$MODE" == "--dev" ]]; then
+  echo "Development hot reload is enabled."
+  export AUDIO_PLAYGROUND_HOT_RELOAD=1
+  exec .venv/bin/python scripts/dev.py
+fi
 exec .venv/bin/python -m audio_playground

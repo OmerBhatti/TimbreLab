@@ -39,6 +39,16 @@ To prepare or verify the environments without opening the UI:
 ./run.sh --setup-only
 ```
 
+For development, launch with hot reload:
+
+```bash
+./run.sh --dev
+```
+
+While this mode is active, changes to application Python files automatically
+stop playback and model workers, close the current process, and launch the
+updated UI. Closing the window normally stops the development launcher.
+
 ## Manual install
 
 On macOS or Linux:
@@ -90,6 +100,43 @@ partial text is replaced with the complete tag, including its closing bracket.
 Voice configurations can be saved under a custom name and reapplied from the
 **Voice preset** dropdown. Presets include voice mode, design attributes,
 speaking speed, and diffusion steps.
+
+On first launch, the app creates two editable starter presets:
+
+| Preset | Voice configuration |
+| --- | --- |
+| `male-narrator` | Male, elderly, very low pitch, British accent, normal, speed 0.9, 64 steps |
+| `female-narrator` | Female, middle-aged, high pitch, British accent, normal, speed 0.9, 64 steps |
+| `warm-female-narrator` | Female, middle-aged, moderate pitch, Canadian accent, normal, speed 0.95, 48 steps |
+| `young-male-narrator` | Male, young adult, moderate pitch, American accent, normal, speed 1.0, 48 steps |
+| `deep-male-announcer` | Male, middle-aged, very low pitch, American accent, normal, speed 0.85, 64 steps |
+| `soft-female-whisper` | Female, young adult, low pitch, British accent, whispering, speed 0.85, 48 steps |
+| `elderly-female-storyteller` | Female, elderly, low pitch, British accent, normal, speed 0.9, 64 steps |
+| `energetic-female-host` | Female, young adult, high pitch, American accent, normal, speed 1.1, 48 steps |
+
+Existing presets with either name are preserved. The starter presets are seeded
+only once, so deleting one does not make it reappear on the next launch.
+
+## Multi-speaker dialogue
+
+Open **Dialogue**, configure at least two speakers, and assign each one a voice
+preset saved from **Emotional TTS**. Write one spoken turn per line using this format:
+
+```text
+Arthur: [sigh] I wasn't expecting you.
+Maya: [question-en] Should I leave?
+Arthur: No, please stay.
+```
+
+The tab starts with an editable example: Emma uses `female-narrator`, John uses
+`male-narrator`, and a short four-line conversation is ready to generate.
+
+Speaker names are matched case-insensitively and must correspond to the names in
+the speaker table. Pressing Enter for a new line opens speaker autocomplete;
+continue typing to filter the configured names, then choose one to insert
+`Speaker: `. Expression-tag autocomplete is also available in the dialogue
+editor. The app renders every line with its assigned preset, inserts a short pause
+between turns, and combines the result into one temporary audio preview.
 
 ## Sound-effect controls
 

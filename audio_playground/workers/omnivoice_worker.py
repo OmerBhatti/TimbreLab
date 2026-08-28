@@ -55,6 +55,37 @@ def _validated_voice_instruction(instruction: str) -> tuple[str, list[str]]:
     return ", ".join(valid), unsupported
 
 
+def _generation_kwargs(request: dict[str, Any]) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "text": request["text"],
+        "num_step": int(request.get("steps", 32)),
+        "speed": float(request.get("speed", 1.0)),
+    }
+    mode = request.get("mode", "design")
+    if mode == "design" and request.get("voice_instruction"):
+        instruction, unsupported = _validated_voice_instruction(request["voice_instruction"])
+        if unsupported:
+            emit(
+                "status",
+                message=f"Ignoring unsupported voice style items: {', '.join(unsupported)}.",
+            )
+        if instruction:
+            kwargs["instruct"] = instruction
+    return kwargs
+
+
+def _fade_dialogue_waveform(waveform: Any, sample_rate: int = 24000) -> Any:
+    """Apply short edge fades so independently rendered turns join cleanly."""
+    import numpy as np
+
+    faded = np.asarray(waveform, dtype=np.float32).squeeze().copy()
+    fade_samples = min(round(0.025 * sample_rate), len(faded) // 2)
+    if fade_samples:
+        faded[:fade_samples] *= np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
+        faded[-fade_samples:] *= np.linspace(1.0, 0.0, fade_samples, dtype=np.float32)
+    return faded
+
+
 def _load_model() -> Any:
     global _model
     if _model is not None:
@@ -85,33 +116,24 @@ def _load_model() -> Any:
 
 
 def generate(request: dict[str, Any]) -> str:
+    import numpy as np
     import soundfile as sf
 
     model = _load_model()
-    kwargs: dict[str, Any] = {
-        "text": request["text"],
-        "num_step": int(request.get("steps", 32)),
-        "speed": float(request.get("speed", 1.0)),
-    }
-    mode = request.get("mode", "design")
-    if mode == "design" and request.get("voice_instruction"):
-        instruction, unsupported = _validated_voice_instruction(request["voice_instruction"])
-        if unsupported:
-            emit(
-                "status",
-                message=f"Ignoring unsupported voice style items: {', '.join(unsupported)}.",
-            )
-        if instruction:
-            kwargs["instruct"] = instruction
+    dialogue_segments = request.get("segments")
+    is_dialogue = isinstance(dialogue_segments, list)
+    segments = dialogue_segments if is_dialogue else [request]
+    if not segments:
+        raise ValueError("Dialogue contains no lines to synthesize.")
 
     emit(
         "status",
-        message=(
-            f"Speech settings: mode={mode}, steps={kwargs['num_step']}, "
-            f"speed={kwargs['speed']:g}, characters={len(request['text'])}."
-        ),
+        message=f"Preparing {'dialogue' if is_dialogue else 'speech'} with {len(segments)} line(s).",
     )
-    estimated_passes = _estimated_forward_passes(request["text"], kwargs["num_step"])
+    estimated_passes = sum(
+        _estimated_forward_passes(str(segment["text"]), int(segment.get("steps", 32)))
+        for segment in segments
+    )
     completed_passes = 0
 
     def report_forward_pass(_module: Any, _inputs: Any, _output: Any) -> None:
@@ -121,21 +143,57 @@ def generate(request: dict[str, Any]) -> str:
         emit("progress", value=percent, label="Estimated speech")
 
     progress_hook = model.register_forward_hook(report_forward_pass)
+    waveforms: list[Any] = []
     try:
-        with monitor_phase("Synthesizing speech", interval=10):
+        phase = "Synthesizing dialogue" if is_dialogue else "Synthesizing speech"
+        with monitor_phase(phase, interval=10):
             emit("progress", value=0, label="Estimated speech")
-            audio = model.generate(**kwargs)
+            for index, segment in enumerate(segments, start=1):
+                kwargs = _generation_kwargs(segment)
+                speaker = str(segment.get("speaker", "Speech"))
+                emit(
+                    "status",
+                    message=(
+                        f"Synthesizing line {index}/{len(segments)} · {speaker} · "
+                        f"steps={kwargs['num_step']} · speed={kwargs['speed']:g}."
+                    ),
+                )
+                audio = model.generate(**kwargs)[0]
+                if hasattr(audio, "detach"):
+                    audio = audio.detach().float().cpu().numpy()
+                waveform = np.asarray(audio, dtype=np.float32).squeeze()
+                waveforms.append(
+                    _fade_dialogue_waveform(waveform) if is_dialogue else waveform
+                )
     finally:
         progress_hook.remove()
     emit("progress", value=100, label="Estimated speech")
-    samples = len(audio[0])
+
+    if is_dialogue and len(waveforms) > 1:
+        leading_pad = np.zeros(round(0.2 * 24000), dtype=np.float32)
+        pause = np.zeros(round(0.3 * 24000), dtype=np.float32)
+        combined: list[Any] = [leading_pad]
+        for index, waveform in enumerate(waveforms):
+            if index:
+                combined.append(pause)
+            combined.append(waveform)
+        output_audio = np.concatenate(combined)
+    else:
+        output_audio = waveforms[0]
+    samples = len(output_audio)
     emit(
         "status",
-        message=f"Speech decoded: {samples} samples ({samples / 24000:.1f}s at 24000 Hz).",
+        message=(
+            f"{'Dialogue' if is_dialogue else 'Speech'} decoded: {samples} samples "
+            f"({samples / 24000:.1f}s at 24000 Hz)."
+        ),
     )
     emit("status", message="Preparing synthesized WAV preview…")
-    sf.write(request["output_path"], audio[0], 24000)
-    emit("status", message="Synthesized speech ready for preview.")
+    sf.write(request["output_path"], output_audio, 24000)
+    emit(
+        "status",
+        message=f"Synthesized {'dialogue' if is_dialogue else 'speech'} ready for preview.",
+    )
     return request["output_path"]
 
 

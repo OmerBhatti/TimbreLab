@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import shutil
+import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 from PyQt6.QtCore import QSettings, QTime, QUrl, Qt
@@ -13,9 +15,11 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QHeaderView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -25,6 +29,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QStyle,
+    QTableWidget,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -39,6 +44,7 @@ from audio_playground.audio_utils import (
     output_path,
 )
 from audio_playground.config import OMNIVOICE_PYTHON, OUTPUT_DIR, SFX_PYTHON
+from audio_playground.dialogue import parse_dialogue, voice_instruction_from_preset
 from audio_playground.tag_text_edit import TagTextEdit
 from audio_playground.voice_presets import VoicePresetStore
 from audio_playground.worker_client import WorkerClient
@@ -51,7 +57,9 @@ class MainWindow(QMainWindow):
         self.resize(1100, 760)
         self.setMinimumSize(860, 640)
         self.preset_store = VoicePresetStore(QSettings())
+        self.preset_store.ensure_defaults()
         self._shutdown_complete = False
+        self._shutdown_in_progress = False
         self._session_files_cleaned = False
 
         self.session_files = tempfile.TemporaryDirectory(prefix="ai-audio-playground-")
@@ -80,13 +88,17 @@ class MainWindow(QMainWindow):
 
         title = QLabel("AI Audio Playground")
         title.setObjectName("title")
-        subtitle = QLabel("Emotional speech with OmniVoice · Sound effects with AudioLDM")
+        subtitle = QLabel(
+            "Emotional speech and multi-speaker dialogue with OmniVoice · "
+            "Sound effects with AudioLDM"
+        )
         subtitle.setObjectName("subtitle")
         outer.addWidget(title)
         outer.addWidget(subtitle)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_tts_tab(), "  Emotional TTS  ")
+        self.tabs.addTab(self._build_dialogue_tab(), "  Dialogue  ")
         self.tabs.addTab(self._build_sfx_tab(), "  SFX && Effects  ")
         outer.addWidget(self.tabs, 1)
         outer.addWidget(self._build_player())
@@ -314,6 +326,78 @@ class MainWindow(QMainWindow):
         page_layout.addWidget(footer)
         return page
 
+    def _build_dialogue_tab(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(22, 22, 22, 16)
+        page_layout.setSpacing(14)
+
+        page_layout.addWidget(self._section_label("Speakers"))
+        speaker_hint = QLabel(
+            "Give each speaker a script name and assign one of your saved voice presets."
+        )
+        speaker_hint.setObjectName("hint")
+        page_layout.addWidget(speaker_hint)
+
+        self.dialogue_speakers = QTableWidget(0, 2)
+        self.dialogue_speakers.setHorizontalHeaderLabels(["Speaker name", "Voice preset"])
+        self.dialogue_speakers.verticalHeader().setVisible(False)
+        self.dialogue_speakers.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.dialogue_speakers.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.dialogue_speakers.setMinimumHeight(135)
+        page_layout.addWidget(self.dialogue_speakers)
+
+        speaker_buttons = QHBoxLayout()
+        add_speaker = QPushButton("Add speaker")
+        add_speaker.clicked.connect(self._add_dialogue_speaker)
+        self.remove_dialogue_speaker = QPushButton("Remove selected")
+        self.remove_dialogue_speaker.clicked.connect(self._remove_dialogue_speaker)
+        speaker_buttons.addWidget(add_speaker)
+        speaker_buttons.addWidget(self.remove_dialogue_speaker)
+        speaker_buttons.addStretch()
+        page_layout.addLayout(speaker_buttons)
+
+        page_layout.addWidget(self._section_label("Dialogue script"))
+        script_hint = QLabel(
+            "Write one line at a time as Speaker: dialogue. Type [ for expression tags."
+        )
+        script_hint.setObjectName("hint")
+        page_layout.addWidget(script_hint)
+        self.dialogue_text = TagTextEdit(ALL_EXPRESSION_TAGS)
+        self.dialogue_text.setPlaceholderText(
+            "Arthur: [sigh] I wasn't expecting you.\nMaya: [question-en] Should I leave?"
+        )
+        self.dialogue_text.setPlainText(
+            "Emma: Good morning, John. How are you today?\n"
+            "John: I'm doing well, Emma. Thanks for asking.\n"
+            "Emma: [questioning] Are you ready to begin?\n"
+            "John: Absolutely. Let's get started."
+        )
+        self.dialogue_text.setMinimumHeight(150)
+        page_layout.addWidget(self.dialogue_text, 1)
+
+        footer = QHBoxLayout()
+        dialogue_note = QLabel(
+            "Lines are rendered in order with a short pause and combined into one preview."
+        )
+        dialogue_note.setObjectName("hint")
+        dialogue_note.setWordWrap(True)
+        footer.addWidget(dialogue_note, 1)
+        self.dialogue_generate = QPushButton("Generate dialogue")
+        self.dialogue_generate.setObjectName("primary")
+        self.dialogue_generate.clicked.connect(self._generate_dialogue)
+        footer.addWidget(self.dialogue_generate)
+        page_layout.addLayout(footer)
+
+        self._add_dialogue_speaker("Emma", "female-narrator")
+        self._add_dialogue_speaker("John", "male-narrator")
+        self._sync_dialogue_speaker_controls()
+        return page
+
     def _build_player(self) -> QWidget:
         frame = QFrame()
         frame.setObjectName("player")
@@ -417,6 +501,67 @@ class MainWindow(QMainWindow):
                 self.voice_preset.setCurrentIndex(index)
         self.voice_preset.blockSignals(False)
         self.delete_voice_preset.setEnabled(self.voice_preset.currentData() is not None)
+        self._refresh_dialogue_preset_choices()
+
+    def _refresh_dialogue_preset_choices(self) -> None:
+        if not hasattr(self, "dialogue_speakers"):
+            return
+        preset_names = sorted(self.preset_store.all(), key=str.casefold)
+        for row in range(self.dialogue_speakers.rowCount()):
+            combo = self.dialogue_speakers.cellWidget(row, 1)
+            if not isinstance(combo, QComboBox):
+                continue
+            selected = combo.currentData()
+            combo.clear()
+            combo.addItem("Select a preset…", None)
+            for name in preset_names:
+                combo.addItem(name, name)
+            selected_index = combo.findData(selected)
+            if selected_index >= 0:
+                combo.setCurrentIndex(selected_index)
+
+    def _add_dialogue_speaker(self, name: str = "", preset_name: str = "") -> None:
+        row = self.dialogue_speakers.rowCount()
+        self.dialogue_speakers.insertRow(row)
+        name_edit = QLineEdit(name or f"Speaker {row + 1}")
+        name_edit.textChanged.connect(self._refresh_dialogue_speaker_autocomplete)
+        preset_combo = QComboBox()
+        self.dialogue_speakers.setCellWidget(row, 0, name_edit)
+        self.dialogue_speakers.setCellWidget(row, 1, preset_combo)
+        self._refresh_dialogue_preset_choices()
+        preset_index = preset_combo.findData(preset_name)
+        if preset_index >= 0:
+            preset_combo.setCurrentIndex(preset_index)
+        self._refresh_dialogue_speaker_autocomplete()
+        self._sync_dialogue_speaker_controls()
+
+    def _remove_dialogue_speaker(self) -> None:
+        if self.dialogue_speakers.rowCount() <= 2:
+            self._sync_dialogue_speaker_controls()
+            return
+        selected_rows = self.dialogue_speakers.selectionModel().selectedRows()
+        if selected_rows:
+            self.dialogue_speakers.removeRow(selected_rows[0].row())
+        elif self.dialogue_speakers.rowCount():
+            self.dialogue_speakers.removeRow(self.dialogue_speakers.rowCount() - 1)
+        self._refresh_dialogue_speaker_autocomplete()
+        self._sync_dialogue_speaker_controls()
+
+    def _refresh_dialogue_speaker_autocomplete(self) -> None:
+        if not hasattr(self, "dialogue_text"):
+            return
+        names: list[str] = []
+        for row in range(self.dialogue_speakers.rowCount()):
+            name_edit = self.dialogue_speakers.cellWidget(row, 0)
+            if isinstance(name_edit, QLineEdit) and name_edit.text().strip():
+                names.append(name_edit.text().strip())
+        self.dialogue_text.set_speaker_names(names)
+
+    def _sync_dialogue_speaker_controls(self) -> None:
+        if hasattr(self, "remove_dialogue_speaker"):
+            self.remove_dialogue_speaker.setEnabled(
+                self.dialogue_speakers.rowCount() > 2
+            )
 
     def _save_voice_preset(self) -> None:
         current_name = self.voice_preset.currentData() or ""
@@ -539,6 +684,64 @@ class MainWindow(QMainWindow):
             }
         )
 
+    def _generate_dialogue(self) -> None:
+        presets = self.preset_store.all()
+        speakers: dict[str, tuple[str, dict[str, object]]] = {}
+        for row in range(self.dialogue_speakers.rowCount()):
+            name_edit = self.dialogue_speakers.cellWidget(row, 0)
+            preset_combo = self.dialogue_speakers.cellWidget(row, 1)
+            if not isinstance(name_edit, QLineEdit) or not isinstance(preset_combo, QComboBox):
+                continue
+            name = name_edit.text().strip()
+            preset_name = preset_combo.currentData()
+            if not name:
+                self._show_error(f"Speaker row {row + 1} needs a name.")
+                return
+            if ":" in name:
+                self._show_error("Speaker names cannot contain a colon.")
+                return
+            if not preset_name or preset_name not in presets:
+                self._show_error(f'Select a saved voice preset for "{name}".')
+                return
+            key = name.casefold()
+            if key in speakers:
+                self._show_error(f'Speaker name "{name}" is used more than once.')
+                return
+            speakers[key] = (name, presets[preset_name])
+
+        if len(speakers) < 2:
+            self._show_error("Dialogue requires at least two configured speakers.")
+            return
+        try:
+            dialogue_lines = parse_dialogue(self.dialogue_text.toPlainText())
+        except ValueError as exc:
+            self._show_error(str(exc))
+            return
+
+        segments: list[dict[str, object]] = []
+        for speaker_name, text in dialogue_lines:
+            speaker = speakers.get(speaker_name.casefold())
+            if speaker is None:
+                self._show_error(
+                    f'No speaker named "{speaker_name}" is configured above the script.'
+                )
+                return
+            configured_name, config = speaker
+            mode = "design" if config.get("mode") == "clone" else config.get("mode", "design")
+            segments.append(
+                {
+                    "speaker": configured_name,
+                    "text": normalize_emotion_tags(text),
+                    "mode": mode,
+                    "voice_instruction": voice_instruction_from_preset(config),
+                    "speed": float(config.get("speed", 1.0)),
+                    "steps": int(config.get("steps", 32)),
+                }
+            )
+
+        destination = output_path(self.session_dir, "dialogue", "multi-speaker")
+        self.tts_worker.generate({"segments": segments, "output_path": str(destination)})
+
     def _tts_busy(self, busy: bool) -> None:
         self._sync_busy_controls()
 
@@ -549,6 +752,7 @@ class MainWindow(QMainWindow):
         busy = self.tts_worker.busy or self.sfx_worker.busy
         self.tts_generate.setEnabled(not busy)
         self.sfx_generate.setEnabled(not busy)
+        self.dialogue_generate.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
         self.stop_button.setVisible(busy)
         if busy and not self.log_toggle.isChecked():
@@ -648,21 +852,55 @@ class MainWindow(QMainWindow):
         self.play_button.setIcon(self.style().standardIcon(icon))
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        self.shutdown()
-        event.accept()
+        try:
+            self.shutdown()
+        except BaseException:
+            # PyQt aborts the entire process when an exception escapes a virtual
+            # event handler such as closeEvent, so closing must always contain it.
+            traceback.print_exc(file=sys.stderr)
+        finally:
+            event.accept()
 
     def shutdown(self) -> None:
         """Release multimedia resources and model workers exactly once."""
-        if self._shutdown_complete:
+        if self._shutdown_complete or self._shutdown_in_progress:
             return
-        self._shutdown_complete = True
-        self.setEnabled(False)
-        self.player.stop()
-        self.player.setSource(QUrl())
-        self.player.setAudioOutput(None)
-        self.tts_worker.stop()
-        self.sfx_worker.stop()
-        self.current_audio = None
+        self._shutdown_in_progress = True
+        try:
+            self._run_shutdown_step("disabling the window", lambda: self.setEnabled(False))
+            self._run_shutdown_step("stopping playback", self.player.stop)
+            self._run_shutdown_step("detaching the media source", lambda: self.player.setSource(QUrl()))
+            self._run_shutdown_step(
+                "detaching the audio output", lambda: self.player.setAudioOutput(None)
+            )
+            self._stop_worker_for_shutdown("OmniVoice", self.tts_worker)
+            self._stop_worker_for_shutdown("AudioLDM", self.sfx_worker)
+            self.current_audio = None
+        finally:
+            self._shutdown_complete = True
+            self._shutdown_in_progress = False
+
+    @staticmethod
+    def _run_shutdown_step(label: str, action) -> None:
+        try:
+            action()
+        except BaseException:
+            print(f"Shutdown warning while {label}:", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+
+    def _stop_worker_for_shutdown(self, name: str, worker: WorkerClient) -> None:
+        try:
+            worker.stop()
+        except BaseException:
+            print(f"Shutdown warning while stopping {name}:", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            # Preserve the invariant that no child QProcess is left alive when
+            # Qt destroys its parent, even if the higher-level stop path failed.
+            self._run_shutdown_step(f"force-stopping {name}", worker.process.kill)
+            self._run_shutdown_step(
+                f"waiting for {name} to exit",
+                lambda: worker.process.waitForFinished(5000),
+            )
 
     def cleanup_session_files(self) -> None:
         """Delete previews after Qt has finished releasing media file handles."""
