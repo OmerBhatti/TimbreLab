@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TimbreLab — Shape voices, dialogue, and sound</title>
+<meta name="description" content="A local PyQt6 desktop studio for AI speech, multi-speaker dialogue, and generated sound effects. Powered by OmniVoice and AudioLDM Small v2. Runs entirely on your machine.">
+<link rel="icon" href="assets/timbrelab-icon.png">
+<meta property="og:title" content="TimbreLab — Shape voices, dialogue, and sound">
+<meta property="og:description" content="A local desktop studio for AI speech, multi-speaker dialogue, and generated sound effects.">
+<meta property="og:image" content="assets/timbrelab-banner.png">
+<style>
+  :root {
+    --bg: #14141f;
+    --bg-raised: #1c1c2b;
+    --line: #2c2c40;
+    --text: #e9e9f2;
+    --muted: #9aa0b5;
+    --accent: #a56bf5;
+    --accent-2: #6f7ee0;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  .wrap { width: min(1060px, 92vw); margin: 0 auto; }
+  section { padding: 72px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(24px, 3.4vw, 34px); margin: 0 0 10px; letter-spacing: -0.02em; }
+  h3 { font-size: 17px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { color: var(--muted); max-width: 62ch; margin: 0 0 34px; }
+
+  /* Hero */
+  header.hero {
+    padding: 86px 0 78px;
+    text-align: center;
+    background:
+      radial-gradient(900px 420px at 50% -8%, rgba(165,107,245,.22), transparent 70%),
+      radial-gradient(700px 380px at 82% 12%, rgba(111,126,224,.16), transparent 70%);
+  }
+  .hero img.logo { width: min(430px, 78vw); height: auto; }
+  .tagline { font-size: clamp(19px, 2.6vw, 24px); margin: 26px 0 12px; letter-spacing: -0.01em; }
+  .hero p.sub { color: var(--muted); max-width: 58ch; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 10px;
+    text-decoration: none; font-weight: 600; font-size: 15px;
+    border: 1px solid transparent; transition: transform .12s ease, opacity .12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+  .btn-ghost { border-color: var(--line); color: var(--text); background: var(--bg-raised); }
+  .badges { margin-top: 26px; color: var(--muted); font-size: 13.5px; }
+  .badges span { display: inline-block; padding: 0 10px; border-left: 1px solid var(--line); }
+  .badges span:first-child { border-left: 0; }
+
+  /* Grid cards */
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); }
+  .card {
+    background: var(--bg-raised); border: 1px solid var(--line);
+    border-radius: 14px; padding: 22px;
+  }
+  .card p { color: var(--muted); margin: 0; font-size: 14.5px; }
+  .card .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+  }
+
+  /* Engines */
+  .engines { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .engine { background: var(--bg-raised); border: 1px solid var(--line); border-radius: 14px; padding: 26px; }
+  .engine h3 { font-size: 20px; margin-bottom: 8px; }
+  .engine .meta { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-bottom: 14px; }
+  .engine p { color: var(--muted); margin: 0 0 14px; font-size: 14.5px; }
+  .engine ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
+  .engine li { margin-bottom: 5px; }
+
+  /* Code */
+  pre {
+    background: #10101a; border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; overflow-x: auto; font-family: var(--mono);
+    font-size: 13.5px; line-height: 1.7; color: #d5d5e6; margin: 0 0 14px;
+  }
+  pre .c { color: #6f7690; }
+  code { font-family: var(--mono); font-size: .92em; background: #10101a; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); }
+  pre code { background: none; border: 0; padding: 0; }
+
+  .steps { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .step .n {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; display: inline-block; margin-bottom: 12px;
+  }
+  .step p { color: var(--muted); font-size: 14.5px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; }
+  td:first-child { font-family: var(--mono); font-size: 13px; color: var(--accent); white-space: nowrap; }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-raised); }
+
+  .req { columns: 2 260px; column-gap: 28px; color: var(--muted); font-size: 14.5px; padding-left: 20px; }
+  .req li { margin-bottom: 8px; break-inside: avoid; }
+
+  .note {
+    border-left: 3px solid var(--accent); background: rgba(165,107,245,.07);
+    padding: 14px 18px; border-radius: 0 10px 10px 0; color: var(--muted); font-size: 14px;
+  }
+  .shot {
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    background: var(--bg-raised); box-shadow: 0 24px 60px rgba(0,0,0,.45);
+  }
+  .shot img { display: block; width: 100%; height: auto; }
+  footer { padding: 46px 0 60px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; text-align: center; }
+  footer img { width: 40px; opacity: .85; margin-bottom: 14px; }
+  footer .links { display: flex; gap: 22px; justify-content: center; margin-top: 14px; }
+  footer .links a { text-decoration: none; }
+  footer .links a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <img class="logo" src="assets/timbrelab-banner.png" alt="TimbreLab">
+    <p class="tagline">Shape voices, dialogue, and sound.</p>
+    <p class="sub">A local desktop studio for expressive speech, multi-speaker dialogue, and generated
+      sound effects. Two AI audio engines, one interface, everything running on your own machine.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#install">Install &amp; run</a>
+      <a class="btn btn-ghost" href="https://github.com/OmerBhatti/TimbreLab">View on GitHub</a>
+    </div>
+    <p class="badges">
+      <span>PyQt6 desktop app</span><span>Fully local</span><span>Apple Silicon &amp; CUDA</span><span>Python 3.10 / 3.11</span><span>Built by <a href="https://tensorpeak.org/">TensorPeak</a></span>
+    </p>
+  </div>
+</header>
+
+<section id="screenshot">
+  <div class="wrap">
+    <h2>One window, three workflows</h2>
+    <p class="lede">Emotional TTS, multi-speaker dialogue, and sound effects live in the same
+      interface, over the same player and log panel.</p>
+    <div class="shot"><img src="assets/screenshot.png" alt="The TimbreLab Emotional TTS tab"></div>
+  </div>
+</section>
+
+<section id="engines">
+  <div class="wrap">
+    <h2>Two engines, loaded independently</h2>
+    <p class="lede">Each engine gets its own Python environment because their PyTorch stacks differ.
+      They run as persistent background processes, so the interface stays responsive and every
+      model loads only once per session.</p>
+    <div class="engines">
+      <div class="engine">
+        <h3>OmniVoice</h3>
+        <div class="meta">speech &amp; dialogue</div>
+        <p>Multilingual text-to-speech with inline expressive cues and designed voices.</p>
+        <ul>
+          <li>Voice design by gender, age, pitch, accent, and normal or whispering delivery</li>
+          <li>Native non-verbal cues plus friendly aliases such as <code>[happy]</code> and <code>[sigh]</code></li>
+          <li>Adjustable speaking speed, diffusion steps, and seed</li>
+        </ul>
+      </div>
+      <div class="engine">
+        <h3>AudioLDM Small v2</h3>
+        <div class="meta">sound effects · 421M params</div>
+        <p>Prompt-based sound effects and environmental audio from a latent diffusion model.</p>
+        <ul>
+          <li>Clips from 1 to 30 seconds, 5 seconds by default</li>
+          <li>Prompt guidance and 8–256 diffusion steps</li>
+          <li>Runs on PyTorch MPS on Apple Silicon; ~1.7 GB downloaded on first use</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What you get</h2>
+    <p class="lede">Built around the parts of generative audio that are usually the most annoying:
+      repeatability, iteration speed, and knowing what the model is actually doing.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="tag">Emotional TTS</div>
+        <h3>Expressive cues inline</h3>
+        <p>Type <code>[</code> in the editor to open tag autocomplete, filter as you type, and insert
+          the complete tag. No arbitrary emotion sliders — only cues the model actually supports.</p>
+      </div>
+      <div class="card">
+        <div class="tag">Dialogue</div>
+        <h3>Multi-speaker scenes</h3>
+        <p>Write one turn per line as <code>Speaker: line</code>. Every speaker maps to a saved voice
+          preset; the app renders each turn, inserts a pause, and combines the result into one preview.</p>
+      </div>
+      <div class="card">
+        <div class="tag">Presets</div>
+        <h3>Reusable voices</h3>
+        <p>Save voice mode, design attributes, speed, diffusion steps, and seed under a name.
+          Eight editable starter presets ship on first launch.</p>
+      </div>
+      <div class="card">
+        <div class="tag">Determinism</div>
+        <h3>Reproducible seeds</h3>
+        <p>Seeds from 0 to 2,147,483,647, defaulting to 9999. Same text, settings, seed, runtime,
+          and hardware gives you the same take back.</p>
+      </div>
+      <div class="card">
+        <div class="tag">Transparency</div>
+        <h3>Real progress, real logs</h3>
+        <p>Estimated progress, download-byte reporting, model-loading heartbeats, and diffusion-step
+          percentages — plus a Stop button whenever a worker is active.</p>
+      </div>
+      <div class="card">
+        <div class="tag">Workflow</div>
+        <h3>Previews stay temporary</h3>
+        <p>Generated WAVs are session-scoped until you explicitly save them. Anything you didn't keep
+          is cleaned up when the app closes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install and run</h2>
+    <p class="lede">The launcher bootstraps itself. It finds a compatible Python, checks all three
+      environments, installs only what is missing, and starts the app with the right interpreter.</p>
+    <div class="steps">
+      <div class="step">
+        <span class="n">01</span>
+        <h3>Launch</h3>
+        <pre><code>chmod +x run.sh scripts/setup.sh
+./run.sh</code></pre>
+        <p>Later launches skip setup and start immediately.</p>
+      </div>
+      <div class="step">
+        <span class="n">02</span>
+        <h3>Set up only</h3>
+        <pre><code>./run.sh --setup-only</code></pre>
+        <p>Prepare or verify environments without opening the UI. Resume one with
+          <code>./scripts/setup.sh omnivoice</code>.</p>
+      </div>
+      <div class="step">
+        <span class="n">03</span>
+        <h3>Develop</h3>
+        <pre><code>./run.sh --dev</code></pre>
+        <p>Hot reload: editing application Python files stops playback and workers, then relaunches
+          the updated UI.</p>
+      </div>
+    </div>
+    <p style="margin:30px 0 10px; color: var(--muted); font-size: 14.5px;">Run it directly, or through the console entry point:</p>
+    <pre><code>.venv/bin/python -m audio_playground
+.venv/bin/timbrelab</code></pre>
+    <p style="margin:30px 0 12px; color: var(--muted); font-size: 14.5px;">Setup creates three local environments:</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Environment</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>.venv</td><td>PyQt desktop application and tests</td></tr>
+          <tr><td>.venv-omnivoice</td><td>OmniVoice speech generation</td></tr>
+          <tr><td>.venv-sfx</td><td>AudioLDM sound-effect generation</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="requirements">
+  <div class="wrap">
+    <h2>Requirements</h2>
+    <ul class="req">
+      <li>Python 3.10 or 3.11 (3.11 recommended)</li>
+      <li><code>ffmpeg</code> on your PATH</li>
+      <li>Several GB of free disk for environments and weights</li>
+      <li>A capable GPU, or an Apple Silicon Mac with ample unified memory</li>
+      <li>Keyboard shortcut: <code>Ctrl+Enter</code> / <code>⌘+Enter</code> to generate</li>
+      <li>Override interpreters via <code>OMNIVOICE_PYTHON</code> and <code>SFX_PYTHON</code></li>
+    </ul>
+    <p class="note" style="margin-top:26px;">
+      The <code>cvssp/audioldm-s-full-v2</code> checkpoint is published under CC-BY-NC-SA 4.0.
+      Review that license before using generated assets in commercial work.
+    </p>
+  </div>
+</section>
+
+<section id="tests">
+  <div class="wrap">
+    <h2>Tested where it counts</h2>
+    <p class="lede">The automated suite covers expression normalization, safe output naming, dialogue
+      parsing, voice-preset persistence and migration, deterministic seed wiring, device selection,
+      download progress helpers, and hot-reload discovery. Full model generation stays a manual
+      integration check — it needs multi-gigabyte downloads and suitable hardware.</p>
+    <pre><code>.venv/bin/python -m pytest -q</code></pre>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <img src="assets/timbrelab-icon.png" alt="">
+    <p>TimbreLab — local AI audio, on your own machine.</p>
+    <p class="links">
+      <a href="https://github.com/OmerBhatti/TimbreLab">GitHub</a>
+      <a href="https://tensorpeak.org/">TensorPeak</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

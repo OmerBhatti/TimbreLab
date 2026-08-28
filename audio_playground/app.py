@@ -6,9 +6,9 @@ import sys
 from PyQt6.QtWidgets import QApplication
 
 from audio_playground.main_window import MainWindow
-from audio_playground.config import PRODUCT_NAME, PROJECT_ROOT
+from audio_playground.config import PRODUCT_NAME, PROJECT_ROOT, WINDOW_BACKGROUND_RGB
 from audio_playground.hot_reload import HotReloadWatcher
-from audio_playground.macos import set_bundle_name
+from audio_playground.macos import set_bundle_name, style_titlebar
 
 
 def main() -> int:
@@ -27,6 +27,7 @@ def main() -> int:
         hot_reload = HotReloadWatcher(app, PROJECT_ROOT)
         window.status_label.setText("Development hot reload enabled")
     window.showMaximized()
+    style_titlebar(int(window.winId()), WINDOW_BACKGROUND_RGB)
     exit_code = app.exec()
     _ = hot_reload
     window.cleanup_session_files()

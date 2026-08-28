@@ -2,8 +2,6 @@
   <img src="assets/timbrelab-banner.png" alt="TimbreLab" width="420">
 </p>
 
-<p align="center"><em>Shape voices, dialogue, and sound.</em></p>
-
 A local PyQt6 desktop studio for speech, multi-speaker dialogue, and generated
 sound effects. It uses two independently loaded AI audio engines:
 
@@ -24,6 +22,10 @@ responsive and loading each model only once per session.
 - Temporary audio previews with explicit download-to-save behavior
 - Estimated progress, detailed live logs, and a Stop button during generation
 - Automatic environment setup, development hot reload, and safe model shutdown
+
+<p align="center">
+  <img src="assets/screenshot.png" alt="TimbreLab Emotional TTS tab" width="820">
+</p>
 
 ## Requirements
 
