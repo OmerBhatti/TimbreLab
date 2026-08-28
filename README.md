@@ -83,11 +83,22 @@ The setup creates three local environments:
 
 ## Run
 
+Hover any field name marked with `ⓘ` (or the field itself) to see a short explanation
+of what the setting controls and how it affects generation.
+
 ```bash
 .venv/bin/python -m audio_playground
 ```
 
 The first generation with either engine downloads its pretrained weights. Progress messages appear at the bottom of the window. Generated WAV files are temporary previews until **Download audio** is pressed.
+
+The application opens maximized by default. Use the standard window control to
+restore it to a smaller resizable window when needed.
+
+Use **Ctrl+Enter** on Linux/Windows or **Command+Enter** on macOS to generate
+from the active tab. The app remembers the selected tab between launches. Logs
+open automatically during generation and collapse afterward unless you changed
+their visibility manually.
 
 ## Emotional TTS controls
 
@@ -99,9 +110,15 @@ partial text is replaced with the complete tag, including its closing bracket.
 
 Voice configurations can be saved under a custom name and reapplied from the
 **Voice preset** dropdown. Presets include voice mode, design attributes,
-speaking speed, and diffusion steps.
+speaking speed, diffusion steps, and seed. Loading a preset restores its seed,
+and saving or replacing one stores the currently selected seed.
 
-On first launch, the app creates two editable starter presets:
+Set **Seed** to a fixed number to reproduce speech with the same text and voice
+settings. Dialogue has its own seed and uses one deterministic random sequence
+for all turns.
+
+On first launch, the app creates editable starter presets. Each starts with seed
+`42`, which can be changed and saved:
 
 | Preset | Voice configuration |
 | --- | --- |
@@ -151,6 +168,8 @@ AudioLDM accepts descriptive prompts such as:
   The default of 2.5 is a useful starting point; high values may reduce variety.
 - **Diffusion steps** trade speed for refinement. Start with 25 and increase only
   when the extra generation time is worthwhile.
+- **Seed** controls AudioLDM's starting noise. The same seed, prompt, duration,
+  guidance, and steps reproduce the same effect on the same runtime and hardware.
 
 The first SFX request downloads approximately 1.7 GB of AudioLDM weights. The
 worker then stays loaded for later requests during the same app session. The log

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os
+import random
 import re
 from typing import Any
 
@@ -86,6 +87,14 @@ def _fade_dialogue_waveform(waveform: Any, sample_rate: int = 24000) -> Any:
     return faded
 
 
+def _seed_random_generators(torch: Any, numpy: Any, seed: int) -> None:
+    random.seed(seed)
+    numpy.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def _load_model() -> Any:
     global _model
     if _model is not None:
@@ -118,8 +127,11 @@ def _load_model() -> Any:
 def generate(request: dict[str, Any]) -> str:
     import numpy as np
     import soundfile as sf
+    import torch
 
     model = _load_model()
+    seed = int(request.get("seed", 42))
+    _seed_random_generators(torch, np, seed)
     dialogue_segments = request.get("segments")
     is_dialogue = isinstance(dialogue_segments, list)
     segments = dialogue_segments if is_dialogue else [request]
@@ -128,7 +140,10 @@ def generate(request: dict[str, Any]) -> str:
 
     emit(
         "status",
-        message=f"Preparing {'dialogue' if is_dialogue else 'speech'} with {len(segments)} line(s).",
+        message=(
+            f"Preparing {'dialogue' if is_dialogue else 'speech'} with {len(segments)} "
+            f"line(s) · seed={seed}."
+        ),
     )
     estimated_passes = sum(
         _estimated_forward_passes(str(segment["text"]), int(segment.get("steps", 32)))

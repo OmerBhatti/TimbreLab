@@ -21,7 +21,7 @@ def main() -> int:
     if os.environ.get("AUDIO_PLAYGROUND_HOT_RELOAD") == "1":
         hot_reload = HotReloadWatcher(app, PROJECT_ROOT)
         window.status_label.setText("Development hot reload enabled")
-    window.show()
+    window.showMaximized()
     exit_code = app.exec()
     _ = hot_reload
     window.cleanup_session_files()

@@ -9,6 +9,7 @@ from PyQt6.QtCore import QSettings
 class VoicePresetStore:
     """Persistent named voice configurations backed by QSettings."""
 
+    DEFAULT_SEED = 42
     SETTINGS_KEY = "voice_presets/v1"
     DEFAULTS_SEEDED_KEY = "voice_presets/defaults_v1_seeded"
     ADDITIONAL_DEFAULTS_SEEDED_KEY = "voice_presets/defaults_v2_seeded"
@@ -22,6 +23,7 @@ class VoicePresetStore:
             "style": "normal",
             "speed": 0.9,
             "steps": 64,
+            "seed": DEFAULT_SEED,
         },
         "female-narrator": {
             "mode": "design",
@@ -32,6 +34,7 @@ class VoicePresetStore:
             "style": "normal",
             "speed": 0.9,
             "steps": 64,
+            "seed": DEFAULT_SEED,
         },
     }
     ADDITIONAL_DEFAULT_PRESETS = {
@@ -44,6 +47,7 @@ class VoicePresetStore:
             "style": "normal",
             "speed": 0.95,
             "steps": 48,
+            "seed": DEFAULT_SEED,
         },
         "young-male-narrator": {
             "mode": "design",
@@ -54,6 +58,7 @@ class VoicePresetStore:
             "style": "normal",
             "speed": 1.0,
             "steps": 48,
+            "seed": DEFAULT_SEED,
         },
         "deep-male-announcer": {
             "mode": "design",
@@ -64,6 +69,7 @@ class VoicePresetStore:
             "style": "normal",
             "speed": 0.85,
             "steps": 64,
+            "seed": DEFAULT_SEED,
         },
         "soft-female-whisper": {
             "mode": "design",
@@ -74,6 +80,7 @@ class VoicePresetStore:
             "style": "whispering",
             "speed": 0.85,
             "steps": 48,
+            "seed": DEFAULT_SEED,
         },
         "elderly-female-storyteller": {
             "mode": "design",
@@ -84,6 +91,7 @@ class VoicePresetStore:
             "style": "normal",
             "speed": 0.9,
             "steps": 64,
+            "seed": DEFAULT_SEED,
         },
         "energetic-female-host": {
             "mode": "design",
@@ -94,6 +102,7 @@ class VoicePresetStore:
             "style": "normal",
             "speed": 1.1,
             "steps": 48,
+            "seed": DEFAULT_SEED,
         },
     }
 
@@ -143,6 +152,10 @@ class VoicePresetStore:
                     presets[name] = config.copy()
                     changed = True
             self.settings.setValue(settings_key, True)
+        for config in presets.values():
+            if "seed" not in config:
+                config["seed"] = self.DEFAULT_SEED
+                changed = True
         if changed:
             self.settings.setValue(self.SETTINGS_KEY, json.dumps(presets, sort_keys=True))
         self.settings.sync()

@@ -30,6 +30,11 @@ def _clamp_duration(value: Any) -> float:
     return max(1.0, min(float(value), 30.0))
 
 
+def _seeded_generator(torch: Any, device: str, seed: int) -> Any:
+    generator_device = device if device == "cuda" else "cpu"
+    return torch.Generator(device=generator_device).manual_seed(seed)
+
+
 def _load_pipeline() -> Any:
     global _device, _pipeline
     if _pipeline is not None:
@@ -93,17 +98,20 @@ def _progress_kwargs(pipeline: Any, total_steps: int) -> dict[str, Any]:
 def generate(request: dict[str, Any]) -> str:
     import numpy as np
     import soundfile as sf
+    import torch
 
     pipeline = _load_pipeline()
     prompt = str(request["prompt"])
     duration = _clamp_duration(request.get("duration", 5.0))
     guidance = float(request.get("guidance", 2.5))
     inference_steps = int(request.get("inference_steps", 25))
+    seed = int(request.get("seed", 42))
+    generator = _seeded_generator(torch, _device, seed)
     emit(
         "status",
         message=(
             f"Generation settings: duration={duration:g}s, guidance={guidance:g}, "
-            f"diffusion_steps={inference_steps}."
+            f"diffusion_steps={inference_steps}, seed={seed}."
         ),
     )
     emit("status", message=f"Conditioning on prompt: {prompt[:160]}")
@@ -115,6 +123,7 @@ def generate(request: dict[str, Any]) -> str:
             audio_length_in_s=duration,
             guidance_scale=guidance,
             num_inference_steps=inference_steps,
+            generator=generator,
             **kwargs,
         )
     emit("progress", value=100, label="Generating audio")

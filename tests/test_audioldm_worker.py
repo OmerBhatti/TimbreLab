@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from audio_playground.workers.audioldm_worker import (
     _clamp_duration,
+    _seeded_generator,
     _select_device,
     _select_dtype,
 )
@@ -39,3 +40,22 @@ def test_duration_is_limited_to_supported_range() -> None:
     assert _clamp_duration(5) == 5.0
     assert _clamp_duration(30) == 30.0
     assert _clamp_duration(60) == 30.0
+
+
+def test_seeded_generator_uses_cpu_for_mps() -> None:
+    calls: list[tuple[str, object]] = []
+
+    class Generator:
+        def __init__(self, *, device: str) -> None:
+            calls.append(("device", device))
+
+        def manual_seed(self, value: int) -> "Generator":
+            calls.append(("seed", value))
+            return self
+
+    torch = SimpleNamespace(Generator=Generator)
+
+    generator = _seeded_generator(torch, "mps", 9876)
+
+    assert isinstance(generator, Generator)
+    assert calls == [("device", "cpu"), ("seed", 9876)]
