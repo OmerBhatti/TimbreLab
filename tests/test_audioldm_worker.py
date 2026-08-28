@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
-from audio_playground.workers.audioldm_worker import _select_device, _select_dtype
+from audio_playground.workers.audioldm_worker import (
+    _clamp_duration,
+    _select_device,
+    _select_dtype,
+)
 
 
 def _torch(*, cuda: bool, mps: bool) -> SimpleNamespace:
@@ -28,3 +32,10 @@ def test_select_dtype_uses_float16_only_on_cuda() -> None:
     assert _select_dtype(torch, "cuda") == "float16"
     assert _select_dtype(torch, "mps") == "float32"
     assert _select_dtype(torch, "cpu") == "float32"
+
+
+def test_duration_is_limited_to_supported_range() -> None:
+    assert _clamp_duration(0) == 1.0
+    assert _clamp_duration(5) == 5.0
+    assert _clamp_duration(30) == 30.0
+    assert _clamp_duration(60) == 30.0

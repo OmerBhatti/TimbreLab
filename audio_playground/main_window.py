@@ -31,7 +31,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from audio_playground.audio_utils import INLINE_EMOTION_TAGS, normalize_emotion_tags, output_path
+from audio_playground.audio_utils import (
+    INLINE_EMOTION_TAGS,
+    OMNIVOICE_NONVERBAL_TAGS,
+    normalize_emotion_tags,
+    output_path,
+)
 from audio_playground.config import OMNIVOICE_PYTHON, OUTPUT_DIR, SFX_PYTHON
 from audio_playground.voice_presets import VoicePresetStore
 from audio_playground.worker_client import WorkerClient
@@ -136,9 +141,15 @@ class MainWindow(QMainWindow):
         self.emotion_tag = QComboBox()
         for tag in INLINE_EMOTION_TAGS:
             self.emotion_tag.addItem(tag.removeprefix("[").removesuffix("]").title(), tag)
+        self.emotion_tag.insertSeparator(self.emotion_tag.count())
+        for tag in OMNIVOICE_NONVERBAL_TAGS:
+            label = tag.removeprefix("[").removesuffix("]").replace("-", " ").title()
+            self.emotion_tag.addItem(label, tag)
         self.insert_emotion_tag = QPushButton("Insert tag")
         self.insert_emotion_tag.clicked.connect(self._insert_emotion_tag)
-        tag_hint = QLabel("Tags insert an expression cue at the cursor position.")
+        tag_hint = QLabel(
+            "Includes friendly emotion aliases and every supported OmniVoice non-verbal cue."
+        )
         tag_hint.setObjectName("hint")
         tag_row.addWidget(self.emotion_tag)
         tag_row.addWidget(self.insert_emotion_tag)
@@ -155,11 +166,11 @@ class MainWindow(QMainWindow):
         self.speed = QDoubleSpinBox()
         self.speed.setRange(0.5, 2.0)
         self.speed.setSingleStep(0.1)
-        self.speed.setValue(1.0)
+        self.speed.setValue(0.9)
         self.steps = QSpinBox()
-        self.steps.setRange(8, 64)
+        self.steps.setRange(8, 128)
         self.steps.setSingleStep(8)
-        self.steps.setValue(32)
+        self.steps.setValue(64)
         form.addRow("Voice mode", self.tts_mode)
         form.addRow("Speaking speed", self.speed)
         form.addRow("Diffusion steps", self.steps)
@@ -177,7 +188,7 @@ class MainWindow(QMainWindow):
         footer = QWidget()
         row = QHBoxLayout(footer)
         row.setContentsMargins(22, 10, 22, 16)
-        hint = QLabel("Tip: 16 steps is faster; 32 generally gives better quality.")
+        hint = QLabel("Tip: Lower Diffusion steps is faster; 64 generally gives better quality.")
         hint.setObjectName("hint")
         row.addWidget(hint)
         row.addStretch()
@@ -219,6 +230,10 @@ class MainWindow(QMainWindow):
         self.voice_style = QComboBox()
         self.voice_style.addItem("normal", None)
         self.voice_style.addItem("whispering", "whisper")
+        self.gender.setCurrentText("male")
+        self.age.setCurrentText("elderly")
+        self.pitch.setCurrentText("very low pitch")
+        self.accent.setCurrentText("british accent")
         form.addRow("Gender", self.gender)
         form.addRow("Age", self.age)
         form.addRow("Pitch", self.pitch)
@@ -262,7 +277,7 @@ class MainWindow(QMainWindow):
 
         form = QFormLayout()
         self.duration = QDoubleSpinBox()
-        self.duration.setRange(1.0, 10.0)
+        self.duration.setRange(1.0, 30.0)
         self.duration.setValue(5.0)
         self.duration.setSuffix(" seconds")
         self.guidance = QDoubleSpinBox()
@@ -270,9 +285,9 @@ class MainWindow(QMainWindow):
         self.guidance.setSingleStep(0.5)
         self.guidance.setValue(2.5)
         self.sfx_steps = QSpinBox()
-        self.sfx_steps.setRange(10, 100)
-        self.sfx_steps.setSingleStep(5)
-        self.sfx_steps.setValue(25)
+        self.sfx_steps.setRange(8, 256)
+        self.sfx_steps.setSingleStep(8)
+        self.sfx_steps.setValue(128)
         form.addRow("Duration", self.duration)
         form.addRow("Prompt guidance", self.guidance)
         form.addRow("Diffusion steps", self.sfx_steps)

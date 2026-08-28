@@ -81,7 +81,7 @@ The first generation with either engine downloads its pretrained weights. Progre
 
 ## Emotional TTS controls
 
-OmniVoice supports a defined set of inline expressive cues rather than an arbitrary emotion-strength parameter. Insert friendly tags such as `[happy]`, `[sad]`, `[surprised]`, `[questioning]`, and `[dissatisfied]` anywhere in the dialogue. The app translates each tag in place to the closest supported OmniVoice cue, such as `[laughter]` or `[sigh]`; these are expressive/non-verbal cues rather than precise emotion-intensity controls. Native OmniVoice tags can also be typed directly. Voice design supports gender, age, pitch, accent, and normal or whispering delivery. OmniVoice rejects arbitrary style descriptions, so broader expression should be controlled with inline cues.
+OmniVoice supports a defined set of inline expressive cues rather than an arbitrary emotion-strength parameter. The expression dropdown includes friendly aliases (`[happy]`, `[sad]`, `[surprised]`, `[questioning]`, and `[dissatisfied]`) and every native non-verbal cue: `[laughter]`, `[sigh]`, `[confirmation-en]`, `[question-en]`, `[question-ah]`, `[question-oh]`, `[question-ei]`, `[question-yi]`, `[surprise-ah]`, `[surprise-oh]`, `[surprise-wa]`, `[surprise-yo]`, and `[dissatisfaction-hnn]`. Friendly aliases are translated in place to their closest supported cue. Voice design supports gender, age, pitch, accent, and normal or whispering delivery.
 
 Voice configurations can be saved under a custom name and reapplied from the
 **Voice preset** dropdown. Presets include voice mode, design attributes,
@@ -95,7 +95,7 @@ AudioLDM accepts descriptive prompts such as:
 > A cinematic thunder crack followed by heavy rain on a metal rooftop,
 > realistic, no music
 
-- **Duration** controls the generated clip length from 1 to 10 seconds.
+- **Duration** defaults to 5 seconds and supports generated clips from 1 to 30 seconds.
 - **Prompt guidance** controls how strongly the result follows the description.
   The default of 2.5 is a useful starting point; high values may reduce variety.
 - **Diffusion steps** trade speed for refinement. Start with 25 and increase only

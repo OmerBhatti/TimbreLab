@@ -13,6 +13,22 @@ INLINE_EMOTION_TAGS = {
     "[dissatisfied]": "[dissatisfaction-hnn]",
 }
 
+OMNIVOICE_NONVERBAL_TAGS = (
+    "[laughter]",
+    "[sigh]",
+    "[confirmation-en]",
+    "[question-en]",
+    "[question-ah]",
+    "[question-oh]",
+    "[question-ei]",
+    "[question-yi]",
+    "[surprise-ah]",
+    "[surprise-oh]",
+    "[surprise-wa]",
+    "[surprise-yo]",
+    "[dissatisfaction-hnn]",
+)
+
 
 def normalize_emotion_tags(text: str) -> str:
     """Translate friendly inline emotion tags to OmniVoice-supported cues."""

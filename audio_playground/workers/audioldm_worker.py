@@ -26,6 +26,10 @@ def _select_dtype(torch: Any, device: str) -> Any:
     return torch.float16 if device == "cuda" else torch.float32
 
 
+def _clamp_duration(value: Any) -> float:
+    return max(1.0, min(float(value), 30.0))
+
+
 def _load_pipeline() -> Any:
     global _device, _pipeline
     if _pipeline is not None:
@@ -92,7 +96,7 @@ def generate(request: dict[str, Any]) -> str:
 
     pipeline = _load_pipeline()
     prompt = str(request["prompt"])
-    duration = min(float(request.get("duration", 5.0)), 10.0)
+    duration = _clamp_duration(request.get("duration", 5.0))
     guidance = float(request.get("guidance", 2.5))
     inference_steps = int(request.get("inference_steps", 25))
     emit(
