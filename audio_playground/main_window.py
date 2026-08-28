@@ -32,12 +32,14 @@ from PyQt6.QtWidgets import (
 )
 
 from audio_playground.audio_utils import (
+    ALL_EXPRESSION_TAGS,
     INLINE_EMOTION_TAGS,
     OMNIVOICE_NONVERBAL_TAGS,
     normalize_emotion_tags,
     output_path,
 )
 from audio_playground.config import OMNIVOICE_PYTHON, OUTPUT_DIR, SFX_PYTHON
+from audio_playground.tag_text_edit import TagTextEdit
 from audio_playground.voice_presets import VoicePresetStore
 from audio_playground.worker_client import WorkerClient
 
@@ -111,7 +113,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(14)
 
         layout.addWidget(self._section_label("Text to speak"))
-        self.tts_text = QTextEdit()
+        self.tts_text = TagTextEdit(ALL_EXPRESSION_TAGS)
         self.tts_text.setPlaceholderText(
             "Use tags wherever delivery changes, for example: [sad] I miss you. [happy] You're home!"
         )

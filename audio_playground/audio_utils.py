@@ -29,6 +29,8 @@ OMNIVOICE_NONVERBAL_TAGS = (
     "[dissatisfaction-hnn]",
 )
 
+ALL_EXPRESSION_TAGS = tuple(INLINE_EMOTION_TAGS) + OMNIVOICE_NONVERBAL_TAGS
+
 
 def normalize_emotion_tags(text: str) -> str:
     """Translate friendly inline emotion tags to OmniVoice-supported cues."""

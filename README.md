@@ -83,6 +83,10 @@ The first generation with either engine downloads its pretrained weights. Progre
 
 OmniVoice supports a defined set of inline expressive cues rather than an arbitrary emotion-strength parameter. The expression dropdown includes friendly aliases (`[happy]`, `[sad]`, `[surprised]`, `[questioning]`, and `[dissatisfied]`) and every native non-verbal cue: `[laughter]`, `[sigh]`, `[confirmation-en]`, `[question-en]`, `[question-ah]`, `[question-oh]`, `[question-ei]`, `[question-yi]`, `[surprise-ah]`, `[surprise-oh]`, `[surprise-wa]`, `[surprise-yo]`, and `[dissatisfaction-hnn]`. Friendly aliases are translated in place to their closest supported cue. Voice design supports gender, age, pitch, accent, and normal or whispering delivery.
 
+Typing `[` in the speech editor opens tag autocomplete. Continue typing to filter
+the list, then choose a tag with the arrow keys and Enter or with the mouse. The
+partial text is replaced with the complete tag, including its closing bracket.
+
 Voice configurations can be saved under a custom name and reapplied from the
 **Voice preset** dropdown. Presets include voice mode, design attributes,
 speaking speed, and diffusion steps.
