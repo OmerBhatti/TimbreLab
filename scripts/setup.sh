@@ -19,8 +19,8 @@ if [[ -z "$PYTHON_BIN" ]]; then
   done
 fi
 
-if [[ "$COMPONENT" != "all" && "$COMPONENT" != "ui" && "$COMPONENT" != "omnivoice" && "$COMPONENT" != "audiocraft" ]]; then
-  echo "Usage: $0 [all|ui|omnivoice|audiocraft]"
+if [[ "$COMPONENT" != "all" && "$COMPONENT" != "ui" && "$COMPONENT" != "omnivoice" && "$COMPONENT" != "sfx" ]]; then
+  echo "Usage: $0 [all|ui|omnivoice|sfx]"
   exit 1
 fi
 
@@ -49,29 +49,20 @@ if [[ "$COMPONENT" == "all" || "$COMPONENT" == "omnivoice" ]]; then
   .venv-omnivoice/bin/python -m pip install --no-deps -e .
 fi
 
-if [[ "$COMPONENT" == "all" || "$COMPONENT" == "audiocraft" ]]; then
-  echo "[3/3] Creating the AudioCraft environment"
-  "$PYTHON_BIN" -m venv .venv-audiocraft
-  .venv-audiocraft/bin/python -m pip install --upgrade pip setuptools wheel
-  .venv-audiocraft/bin/python -m pip install \
-    'numpy<2' torch==2.1.0 torchaudio==2.1.0 torchvision==0.16.0 \
-    transformers==4.44.2
-
-  if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
-    # AudioCraft declares xformers, but xformers has no supported Apple Silicon wheel.
-    .venv-audiocraft/bin/python -m pip install audiocraft --no-deps
-    .venv-audiocraft/bin/python -m pip install \
-      'av>=12' einops 'flashy>=0.0.1' 'hydra-core>=1.1' hydra-colorlog \
-      julius num2words sentencepiece spacy==3.7.6 huggingface-hub tqdm demucs \
-      librosa soundfile torchmetrics encodec protobuf torchdiffeq click
-  else
-    .venv-audiocraft/bin/python -m pip install audiocraft
-  fi
-  .venv-audiocraft/bin/python -m pip install --no-deps -e .
+if [[ "$COMPONENT" == "all" || "$COMPONENT" == "sfx" ]]; then
+  echo "[3/3] Creating the AudioLDM sound-effects environment"
+  "$PYTHON_BIN" -m venv .venv-sfx
+  .venv-sfx/bin/python -m pip install --upgrade pip setuptools wheel
+  .venv-sfx/bin/python -m pip install \
+    torch==2.8.0 torchaudio==2.8.0 \
+    diffusers==0.35.2 transformers==4.57.6 \
+    huggingface-hub==0.36.0 accelerate==1.11.0 \
+    scipy soundfile librosa safetensors
+  .venv-sfx/bin/python -m pip install --no-deps -e .
 fi
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "Warning: ffmpeg is not installed. AudioCraft may need it for some audio operations."
+  echo "Warning: ffmpeg is not installed. Some audio operations may need it."
 fi
 
 echo

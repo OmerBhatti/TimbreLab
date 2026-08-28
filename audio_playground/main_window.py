@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
 )
 
 from audio_playground.audio_utils import INLINE_EMOTION_TAGS, normalize_emotion_tags, output_path
-from audio_playground.config import AUDIOCRAFT_PYTHON, OMNIVOICE_PYTHON, OUTPUT_DIR
+from audio_playground.config import OMNIVOICE_PYTHON, OUTPUT_DIR, SFX_PYTHON
 from audio_playground.voice_presets import VoicePresetStore
 from audio_playground.worker_client import WorkerClient
 
@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
             OMNIVOICE_PYTHON, "audio_playground.workers.omnivoice_worker", self
         )
         self.sfx_worker = WorkerClient(
-            AUDIOCRAFT_PYTHON, "audio_playground.workers.audiocraft_worker", self
+            SFX_PYTHON, "audio_playground.workers.audioldm_worker", self
         )
         self.audio_output = QAudioOutput(self)
         self.audio_output.setVolume(0.8)
@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
 
         title = QLabel("AI Audio Playground")
         title.setObjectName("title")
-        subtitle = QLabel("Emotional speech with OmniVoice · Sound effects with AudioCraft")
+        subtitle = QLabel("Emotional speech with OmniVoice · Sound effects with AudioLDM")
         subtitle.setObjectName("subtitle")
         outer.addWidget(title)
         outer.addWidget(subtitle)
@@ -260,19 +260,20 @@ class MainWindow(QMainWindow):
 
         form = QFormLayout()
         self.duration = QDoubleSpinBox()
-        self.duration.setRange(1.0, 20.0)
+        self.duration.setRange(1.0, 10.0)
         self.duration.setValue(5.0)
         self.duration.setSuffix(" seconds")
-        self.temperature = QDoubleSpinBox()
-        self.temperature.setRange(0.1, 2.0)
-        self.temperature.setSingleStep(0.1)
-        self.temperature.setValue(1.0)
-        self.top_k = QSpinBox()
-        self.top_k.setRange(0, 1000)
-        self.top_k.setValue(250)
+        self.guidance = QDoubleSpinBox()
+        self.guidance.setRange(1.0, 5.0)
+        self.guidance.setSingleStep(0.5)
+        self.guidance.setValue(2.5)
+        self.sfx_steps = QSpinBox()
+        self.sfx_steps.setRange(10, 100)
+        self.sfx_steps.setSingleStep(5)
+        self.sfx_steps.setValue(25)
         form.addRow("Duration", self.duration)
-        form.addRow("Creativity", self.temperature)
-        form.addRow("Top-k sampling", self.top_k)
+        form.addRow("Prompt guidance", self.guidance)
+        form.addRow("Diffusion steps", self.sfx_steps)
         layout.addLayout(form)
 
         page_layout.addWidget(self._scrollable(content), 1)
@@ -281,8 +282,8 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(footer)
         row.setContentsMargins(22, 10, 22, 16)
         note = QLabel(
-            "AudioGen Medium downloads about 3.6 GB and works best with NVIDIA CUDA. "
-            "Apple Silicon uses MPS compatibility mode with EnCodec on CPU."
+            "AudioLDM Small v2 is a lightweight 421M-parameter SFX model with native "
+            "Apple Metal support. The first run downloads about 1.7 GB."
         )
         note.setWordWrap(True)
         note.setObjectName("hint")
@@ -513,8 +514,8 @@ class MainWindow(QMainWindow):
             {
                 "prompt": prompt,
                 "duration": self.duration.value(),
-                "temperature": self.temperature.value(),
-                "top_k": self.top_k.value(),
+                "guidance": self.guidance.value(),
+                "inference_steps": self.sfx_steps.value(),
                 "output_path": str(destination),
             }
         )

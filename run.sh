@@ -49,15 +49,15 @@ if ! .venv-omnivoice/bin/python -c \
   PYTHON_BIN="$BASE_PYTHON" "$SETUP_SCRIPT" omnivoice
 fi
 
-if ! .venv-audiocraft/bin/python -c \
-  'import importlib.util as u; raise SystemExit(0 if all(u.find_spec(x) for x in ("torch", "torchaudio", "audiocraft", "soundfile", "audio_playground")) else 1)' \
+if ! .venv-sfx/bin/python -c \
+  'import importlib.util as u; raise SystemExit(0 if all(u.find_spec(x) for x in ("torch", "diffusers", "transformers", "soundfile", "audio_playground")) else 1)' \
   >/dev/null 2>&1; then
-  echo "AudioCraft environment is missing or incomplete; setting it up now."
-  PYTHON_BIN="$BASE_PYTHON" "$SETUP_SCRIPT" audiocraft
+  echo "AudioLDM environment is missing or incomplete; setting it up now."
+  PYTHON_BIN="$BASE_PYTHON" "$SETUP_SCRIPT" sfx
 fi
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "Warning: ffmpeg is not installed; some AudioCraft operations may fail." >&2
+  echo "Warning: ffmpeg is not installed; some audio operations may fail." >&2
 fi
 
 if [[ "$MODE" == "--setup-only" ]]; then

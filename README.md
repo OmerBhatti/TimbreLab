@@ -3,9 +3,9 @@
 A local PyQt desktop app with two independently loaded AI audio engines:
 
 - **OmniVoice** for multilingual TTS, voice design, and supported expressive tags.
-- **AudioCraft AudioGen** for prompt-based sound effects and environmental audio.
+- **AudioLDM Small v2** for prompt-based sound effects and environmental audio.
 
-The engines use separate Python environments because their official PyTorch requirements conflict. They run as persistent background workers, so the UI stays responsive and each model is loaded only once per session.
+The engines use separate Python environments because their official PyTorch requirements conflict. They run as persistent background workers, so the UI stays responsive and each model is loaded only once per session. Sound-effect generation is handled by a Diffusers-based AudioLDM worker.
 
 ## Requirements
 
@@ -14,9 +14,11 @@ The engines use separate Python environments because their official PyTorch requ
 - Plenty of free disk space for Python packages and downloaded model weights
 - A capable GPU, or an Apple Silicon Mac with ample unified memory, is strongly recommended
 
-AudioGen Medium is a 1.5B-parameter model and its official documentation recommends a GPU with at least 16 GB of memory. CPU generation can be very slow.
+AudioLDM Small v2 is a 421M-parameter latent diffusion model. It runs through
+PyTorch MPS on Apple Silicon and downloads about 1.7 GB of model files.
 
-The `facebook/audiogen-medium` checkpoint is published under CC-BY-NC 4.0. Review that license before using generated assets in commercial work.
+The `cvssp/audioldm-s-full-v2` checkpoint is published under CC-BY-NC-SA 4.0.
+Review that license before using generated assets in commercial work.
 
 ## Automatic setup and launch
 
@@ -47,7 +49,7 @@ chmod +x scripts/setup.sh
 ```
 
 If a slow download is interrupted, resume just that environment with
-`./scripts/setup.sh omnivoice` or `./scripts/setup.sh audiocraft`.
+`./scripts/setup.sh omnivoice` or `./scripts/setup.sh sfx`.
 
 To select a different compatible Python executable for either launcher:
 
@@ -61,7 +63,13 @@ Or launch with automatic environment checks:
 PYTHON_BIN=/path/to/python3.11 ./run.sh
 ```
 
-The setup creates three local environments: `.venv` for PyQt, `.venv-omnivoice` for speech, and `.venv-audiocraft` for sound effects.
+The setup creates three local environments:
+
+| Environment | Purpose |
+| --- | --- |
+| `.venv` | PyQt desktop application and tests |
+| `.venv-omnivoice` | OmniVoice speech generation |
+| `.venv-sfx` | AudioLDM sound-effect generation |
 
 ## Run
 
@@ -79,13 +87,32 @@ Voice configurations can be saved under a custom name and reapplied from the
 **Voice preset** dropdown. Presets include voice mode, design attributes,
 speaking speed, and diffusion steps.
 
+## Sound-effect controls
+
+Open **SFX & Effects**, describe the sound, and select **Generate sound effect**.
+AudioLDM accepts descriptive prompts such as:
+
+> A cinematic thunder crack followed by heavy rain on a metal rooftop,
+> realistic, no music
+
+- **Duration** controls the generated clip length from 1 to 10 seconds.
+- **Prompt guidance** controls how strongly the result follows the description.
+  The default of 2.5 is a useful starting point; high values may reduce variety.
+- **Diffusion steps** trade speed for refinement. Start with 25 and increase only
+  when the extra generation time is worthwhile.
+
+The first SFX request downloads approximately 1.7 GB of AudioLDM weights. The
+worker then stays loaded for later requests during the same app session. The log
+panel reports download activity, model-loading heartbeats, and diffusion-step
+progress. **Stop** is shown only while a worker is active.
+
 ## Configuration
 
 Worker interpreters and the output directory can be overridden:
 
 ```bash
 OMNIVOICE_PYTHON=/path/to/python \
-AUDIOCRAFT_PYTHON=/path/to/python \
+SFX_PYTHON=/path/to/python \
 AUDIO_PLAYGROUND_OUTPUT_DIR=/path/to/outputs \
 .venv/bin/python -m audio_playground
 ```
@@ -102,7 +129,7 @@ The tests cover request-independent utility behavior. Full model generation is a
 
 - **Worker environment not found:** run `./scripts/setup.sh` from the project directory.
 - **Out of memory:** close other GPU-heavy applications, shorten SFX duration, then restart the app to unload and reload workers.
-- **AudioCraft installation on Apple Silicon:** the setup skips `xformers`, which is a CUDA optimization, and uses a newer binary PyAV wheel because AudioCraft's old PyAV pin requires native build tools.
+- **AudioLDM on Apple Silicon:** the worker uses PyTorch MPS with float32 precision and attention slicing. Float16 is intentionally limited to CUDA because it can produce silent AudioLDM waveforms on MPS.
 - **Slow first generation:** both workers download weights on first use and cache them through Hugging Face.
 - **Download remains at `0/N`:** the outer Hugging Face counter only advances after a complete model blob finishes. The live log reports cached bytes and transfer activity instead. The app disables the Xet downloader so interrupted downloads resume through standard HTTP. Supplying an optional `HF_TOKEN` environment variable may improve Hugging Face rate limits.
-- **AudioCraft appears idle:** the live log emits timed heartbeats for imports, model preparation, token-generation percentages, waveform decoding, CPU transfer, and WAV writing. A download with no cache growth for two minutes is explicitly labeled as a possible stall.
+- **AudioLDM appears idle:** the live log emits timed heartbeats for imports, model preparation, diffusion-step percentages, and WAV writing. A download with no cache growth for two minutes is explicitly labeled as a possible stall.
