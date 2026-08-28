@@ -37,6 +37,7 @@ class WorkerClient(QObject):
         self._busy = False
         self._pending: dict[str, Any] | None = None
         self._cancel_requested = False
+        self._shutting_down = False
 
     @property
     def busy(self) -> bool:
@@ -78,18 +79,31 @@ class WorkerClient(QObject):
         QTimer.singleShot(2000, self._kill_if_running)
 
     def stop(self) -> None:
-        if self.process.state() == QProcess.ProcessState.NotRunning:
-            return
+        """Stop the worker completely before its QProcess can be destroyed."""
+        self._shutting_down = True
+        self._cancel_requested = True
         self._pending = None
+        if self.process.state() == QProcess.ProcessState.NotRunning:
+            self._set_busy(False)
+            return
+
         if self._busy:
-            self._cancel_requested = True
             self.process.terminate()
         else:
             self.process.write(b'{"command":"quit"}\n')
-        self.process.waitForFinished(1500)
+            self.process.waitForBytesWritten(500)
+
+        self.process.waitForFinished(3000)
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.terminate()
+            self.process.waitForFinished(2000)
         if self.process.state() != QProcess.ProcessState.NotRunning:
             self.process.kill()
-            self.process.waitForFinished(500)
+            # A live child process must never outlast its owning QProcess. SIGKILL
+            # is definitive, so wait for the OS to reap it before closing Qt.
+            self.process.waitForFinished(-1)
+        self.process.close()
+        self._set_busy(False)
 
     def _send(self, payload: dict[str, Any]) -> None:
         message = {"command": "generate", **payload}
@@ -97,6 +111,9 @@ class WorkerClient(QObject):
         self._report("Generating… first use may download model weights.")
 
     def _read_stdout(self) -> None:
+        if self._shutting_down:
+            self.process.readAllStandardOutput()
+            return
         self._stdout_buffer += bytes(self.process.readAllStandardOutput()).decode(errors="replace")
         while "\n" in self._stdout_buffer:
             line, self._stdout_buffer = self._stdout_buffer.split("\n", 1)
@@ -131,6 +148,9 @@ class WorkerClient(QObject):
                 self.error.emit(error)
 
     def _read_stderr(self) -> None:
+        if self._shutting_down:
+            self.process.readAllStandardError()
+            return
         text = bytes(self.process.readAllStandardError()).decode(errors="replace").strip()
         if text:
             lines = [line.strip() for line in text.replace("\r", "\n").splitlines() if line.strip()]
@@ -139,7 +159,7 @@ class WorkerClient(QObject):
             self.status.emit(lines[-1][:240])
 
     def _process_error(self, _error: QProcess.ProcessError) -> None:
-        if self._cancel_requested:
+        if self._cancel_requested or self._shutting_down:
             return
         self._set_busy(False)
         self.error.emit(self.process.errorString())
@@ -151,6 +171,8 @@ class WorkerClient(QObject):
         self._pending = None
         self._stdout_buffer = ""
         self._set_busy(False)
+        if self._shutting_down:
+            return
         if was_cancelled:
             self._report("Stopped. You can generate again.")
         elif was_busy and exit_code:

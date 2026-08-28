@@ -13,10 +13,12 @@ def main() -> int:
     app.setOrganizationName("AI Audio Playground")
     app.setStyle("Fusion")
     window = MainWindow()
+    app.aboutToQuit.connect(window.shutdown)
     window.show()
-    return app.exec()
+    exit_code = app.exec()
+    window.cleanup_session_files()
+    return exit_code
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

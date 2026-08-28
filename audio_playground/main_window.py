@@ -44,6 +44,8 @@ class MainWindow(QMainWindow):
         self.resize(1100, 760)
         self.setMinimumSize(860, 640)
         self.preset_store = VoicePresetStore(QSettings())
+        self._shutdown_complete = False
+        self._session_files_cleaned = False
 
         self.session_files = tempfile.TemporaryDirectory(prefix="ai-audio-playground-")
         self.session_dir = Path(self.session_files.name)
@@ -629,12 +631,28 @@ class MainWindow(QMainWindow):
         self.play_button.setIcon(self.style().standardIcon(icon))
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        self.tts_worker.stop()
-        self.sfx_worker.stop()
+        self.shutdown()
+        event.accept()
+
+    def shutdown(self) -> None:
+        """Release multimedia resources and model workers exactly once."""
+        if self._shutdown_complete:
+            return
+        self._shutdown_complete = True
+        self.setEnabled(False)
         self.player.stop()
         self.player.setSource(QUrl())
+        self.player.setAudioOutput(None)
+        self.tts_worker.stop()
+        self.sfx_worker.stop()
+        self.current_audio = None
+
+    def cleanup_session_files(self) -> None:
+        """Delete previews after Qt has finished releasing media file handles."""
+        if self._session_files_cleaned:
+            return
+        self._session_files_cleaned = True
         self.session_files.cleanup()
-        super().closeEvent(event)
 
     def _apply_theme(self) -> None:
         self.setStyleSheet(
