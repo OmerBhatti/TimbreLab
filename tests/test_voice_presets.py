@@ -122,3 +122,22 @@ def test_user_presets_can_still_be_deleted(tmp_path) -> None:
     assert store.delete("my-voice") is True
     assert "my-voice" not in store.all()
     assert store.delete("my-voice") is False
+
+
+def test_presets_are_grouped_by_origin(tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    store = VoicePresetStore(settings)
+    store.ensure_defaults()
+    store.save("my-design", {"mode": "design", "gender": "female"})
+    store.save("ana-clone", {"mode": "clone", "ref_audio": "/voices/ana.wav"})
+
+    grouped = store.grouped()
+
+    assert grouped["Cloned voices"] == ["ana-clone"]
+    assert grouped["Your voices"] == ["my-design"]
+    assert set(grouped["Built-in voices"]) == store.system_names()
+
+
+def test_built_in_presets_have_readable_labels() -> None:
+    assert VoicePresetStore.display_name("male-narrator") == "Male Narrator — elderly, British"
+    assert VoicePresetStore.display_name("my-own-voice") == "my-own-voice"

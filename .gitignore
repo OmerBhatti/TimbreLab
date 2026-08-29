@@ -29,6 +29,8 @@ outputs/*.mp3
 outputs/*.m4a
 outputs/*.ogg
 !outputs/.gitkeep
+voices/
+
 
 # Editors and operating systems
 .DS_Store

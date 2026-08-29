@@ -37,3 +37,17 @@ def voice_instruction_from_preset(config: dict[str, Any]) -> str:
         )
         if value
     )
+
+
+def voice_segment_from_preset(config: dict[str, Any]) -> dict[str, Any]:
+    """The engine-facing voice settings a saved preset contributes to a line."""
+    mode = str(config.get("mode", "design"))
+    if mode == "clone":
+        return {
+            "mode": "clone",
+            "ref_audio": str(config.get("ref_audio", "")),
+            "ref_text": str(config.get("ref_text", "")),
+        }
+    if mode not in {"design", "auto"}:
+        mode = "design"
+    return {"mode": mode, "voice_instruction": voice_instruction_from_preset(config)}

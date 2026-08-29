@@ -50,3 +50,11 @@ def output_path(output_dir: Path, kind: str, hint: str = "") -> Path:
         parts.append(safe_hint)
     parts.append(datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
     return output_dir / f"{'-'.join(parts)}.wav"
+
+
+def voice_reference_path(library_dir: Path, preset_name: str, suffix: str) -> Path:
+    """Stable location for the reference clip backing a cloned voice preset."""
+    library_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r"[^a-zA-Z0-9]+", "-", preset_name.lower()).strip("-")[:40]
+    clean_suffix = suffix if re.fullmatch(r"\.[a-zA-Z0-9]{1,5}", suffix or "") else ".wav"
+    return library_dir / f"{safe_name or 'voice'}{clean_suffix}"

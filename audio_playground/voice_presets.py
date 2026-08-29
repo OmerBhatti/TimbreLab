@@ -133,6 +133,38 @@ class VoicePresetStore:
         self.settings.setValue(self.SETTINGS_KEY, json.dumps(presets, sort_keys=True))
         self.settings.sync()
 
+    DISPLAY_NAMES = {
+        "male-narrator": "Male Narrator — elderly, British",
+        "female-narrator": "Female Narrator — middle-aged, British",
+        "warm-female-narrator": "Warm Female Narrator — Canadian",
+        "young-male-narrator": "Young Male Narrator — American",
+        "deep-male-announcer": "Deep Male Announcer — American",
+        "soft-female-whisper": "Soft Female Whisper — British",
+        "elderly-female-storyteller": "Elderly Female Storyteller — British",
+        "energetic-female-host": "Energetic Female Host — American",
+    }
+
+    @classmethod
+    def display_name(cls, name: str) -> str:
+        """Readable label for a preset; stored names stay untouched."""
+        return cls.DISPLAY_NAMES.get(name, name)
+
+    def grouped(self) -> dict[str, list[str]]:
+        """Preset names split into the sections the pickers show."""
+        sections: dict[str, list[str]] = {"Built-in voices": [], "Cloned voices": [], "Your voices": []}
+        for name, config in self.all().items():
+            if self.is_system(name):
+                sections["Built-in voices"].append(name)
+            elif str(config.get("mode")) == "clone":
+                sections["Cloned voices"].append(name)
+            else:
+                sections["Your voices"].append(name)
+        return {
+            section: sorted(names, key=str.casefold)
+            for section, names in sections.items()
+            if names
+        }
+
     def is_system(self, name: str) -> bool:
         """Built-in starter presets belong to the app and cannot be removed."""
         return name in self.system_names()

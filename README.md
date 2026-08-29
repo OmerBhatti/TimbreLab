@@ -15,6 +15,7 @@ responsive and loading each model only once per session.
 ## Features
 
 - Emotional and multilingual TTS with inline OmniVoice expression cues
+- Voice cloning from a short reference recording, saved as a reusable preset
 - Multi-speaker dialogue assembled from saved voice presets
 - Prompt-based SFX generation with AudioLDM Small v2
 - Searchable expression and speaker autocomplete
@@ -171,6 +172,23 @@ only once and cannot be deleted: **Delete** is hidden while one of them is
 selected. They stay editable, so saving over a starter name keeps your version. Presets created with the
 previous default seed are migrated once from `42` to `9999`; other custom seeds
 remain unchanged.
+
+## Voice cloning
+
+Set **Voice mode** to **Clone a voice** in the Emotional TTS tab, choose a
+reference recording, and type its transcript into **Reference text**. A clean 5
+to 20 second clip of a single speaker works best, and the transcript has to match
+what is actually said — accuracy matters more than length.
+
+Cloned voices are saved like any other preset. Saving one copies its reference
+recording into `voices/` (override with `AUDIO_PLAYGROUND_VOICE_DIR`) under the
+preset name, so the preset keeps working after the original file moves. Cloned
+presets can be assigned to speakers in the **Dialogue** tab exactly like designed
+voices.
+
+If a preset's stored recording is later deleted, generation reports the missing
+reference instead of falling back to a different voice; re-select the audio and
+save the preset again.
 
 ## Multi-speaker dialogue
 

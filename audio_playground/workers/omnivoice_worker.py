@@ -64,6 +64,19 @@ def _generation_kwargs(request: dict[str, Any]) -> dict[str, Any]:
         "speed": float(request.get("speed", 1.0)),
     }
     mode = request.get("mode", "design")
+    if mode == "clone":
+        reference = str(request.get("ref_audio", "")).strip()
+        transcript = str(request.get("ref_text", "")).strip()
+        if not reference or not os.path.isfile(reference):
+            raise ValueError(
+                "This cloned voice is missing its reference recording. "
+                "Re-select the audio file and save the preset again."
+            )
+        if not transcript:
+            raise ValueError("A cloned voice needs the transcript of its reference audio.")
+        kwargs["ref_audio"] = reference
+        kwargs["ref_text"] = transcript
+        return kwargs
     if mode == "design" and request.get("voice_instruction"):
         instruction, unsupported = _validated_voice_instruction(request["voice_instruction"])
         if unsupported:

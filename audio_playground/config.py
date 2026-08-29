@@ -6,6 +6,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = Path(os.environ.get("AUDIO_PLAYGROUND_OUTPUT_DIR", PROJECT_ROOT / "outputs"))
+VOICE_LIBRARY_DIR = Path(
+    os.environ.get("AUDIO_PLAYGROUND_VOICE_DIR", PROJECT_ROOT / "voices")
+)
 LOGO_PATH = PROJECT_ROOT / "assets" / "timbrelab-logo.png"
 APP_ICON_PATH = PROJECT_ROOT / "assets" / "timbrelab-icon.png"
 ICON_DIR = PROJECT_ROOT / "assets" / "icons"

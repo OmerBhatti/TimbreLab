@@ -53,6 +53,7 @@ from audio_playground.audio_utils import (
     ALL_EXPRESSION_TAGS,
     normalize_emotion_tags,
     output_path,
+    voice_reference_path,
 )
 from audio_playground.config import (
     APP_ICON_PATH,
@@ -64,11 +65,12 @@ from audio_playground.config import (
     PRODUCT_NAME,
     VENDOR_NAME,
     VENDOR_URL,
+    VOICE_LIBRARY_DIR,
     WINDOW_BACKGROUND_RGB,
     SFX_PYTHON,
 )
 from audio_playground.macos import style_titlebar
-from audio_playground.dialogue import parse_dialogue, voice_instruction_from_preset
+from audio_playground.dialogue import parse_dialogue, voice_segment_from_preset
 from audio_playground.tag_text_edit import TagTextEdit
 from audio_playground.voice_presets import VoicePresetStore
 from audio_playground.worker_client import WorkerClient
@@ -80,6 +82,8 @@ TTS_TIPS = (
     "Tip: save the current voice as a preset to reuse it in the Dialogue tab.",
     "Tip: reuse the same seed with the same settings to regenerate an identical take.",
     "Tip: press the dice next to Seed to roll a different voice performance.",
+    "Tip: Clone a voice copies a 5 to 20 second reference recording you provide.",
+    "Tip: a cloned voice needs an accurate transcript of its reference recording.",
     "Tip: place a tag wherever the delivery changes, not only at the start of a line.",
     "Tip: Ctrl+Enter, or Command+Enter on macOS, generates from the active tab.",
     "Tip: previews are temporary — download the ones you want to keep before closing.",
@@ -264,6 +268,7 @@ class MainWindow(QMainWindow):
         self.tts_mode = QComboBox()
         self.tts_mode.addItem("Design a voice", "design")
         self.tts_mode.addItem("Automatic voice", "auto")
+        self.tts_mode.addItem("Clone a voice", "clone")
         self.tts_mode.currentIndexChanged.connect(self._update_tts_mode)
         self.speed = QDoubleSpinBox()
         self.speed.setRange(0.5, 2.0)
@@ -280,7 +285,8 @@ class MainWindow(QMainWindow):
             form,
             "Voice mode",
             self.tts_mode,
-            "Design uses the selected voice attributes. Automatic lets OmniVoice choose a voice.",
+            "Design uses the selected voice attributes, Automatic lets OmniVoice choose one, "
+            "and Clone copies the voice in a reference recording.",
         )
         self._add_help_row(
             form,
@@ -307,6 +313,7 @@ class MainWindow(QMainWindow):
         self.voice_stack.setMaximumHeight(220)
         self.voice_stack.addWidget(self._build_design_panel())
         self.voice_stack.addWidget(self._build_auto_panel())
+        self.voice_stack.addWidget(self._build_clone_panel())
         controls.addWidget(self.voice_stack, 2)
         layout.addLayout(controls)
         layout.addStretch(1)
@@ -393,6 +400,82 @@ class MainWindow(QMainWindow):
         layout.addWidget(label)
         layout.addStretch()
         return panel
+
+    def _build_clone_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("panel")
+        form = QFormLayout(panel)
+        form.setContentsMargins(14, 12, 14, 12)
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+
+        picker = QWidget()
+        picker.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        picker_row = QHBoxLayout(picker)
+        picker_row.setContentsMargins(0, 0, 0, 0)
+        picker_row.setSpacing(8)
+        self.clone_audio_label = QLabel("No recording selected")
+        self.clone_audio_label.setObjectName("fileName")
+        self.clone_audio_label.setFixedHeight(38)
+        choose = QPushButton("Choose audio…")
+        choose.clicked.connect(self._choose_clone_audio)
+        picker_row.addWidget(self.clone_audio_label, 1)
+        picker_row.addWidget(choose)
+        self._add_help_row(
+            form,
+            "Reference audio",
+            picker,
+            "A clean 5 to 20 second recording of the voice to clone.",
+        )
+
+        self.clone_text = QTextEdit()
+        self.clone_text.setPlaceholderText("Exactly what is said in the recording")
+        self.clone_text.setAcceptRichText(False)
+        self.clone_text.setMinimumHeight(70)
+        self.clone_text.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.clone_text.setTabChangesFocus(True)
+        self._add_help_row(
+            form,
+            "Reference text",
+            self.clone_text,
+            "The transcript of the reference recording. Accuracy matters more than length.",
+        )
+        self.clone_audio_path: Path | None = None
+        return panel
+
+    def _choose_clone_audio(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choose reference audio",
+            str(self.clone_audio_path.parent if self.clone_audio_path else Path.home()),
+            "Audio (*.wav *.mp3 *.flac *.m4a *.ogg)",
+        )
+        if not filename:
+            return
+        self._set_clone_audio(Path(filename))
+
+    def _set_clone_audio(self, path: Path | None) -> None:
+        self.clone_audio_path = path
+        if path is None:
+            self.clone_audio_label.setText("No recording selected")
+            self.clone_audio_label.setToolTip("")
+            return
+        missing = "" if path.is_file() else "  (file is missing)"
+        self.clone_audio_label.setText(f"{path.name}{missing}")
+        self.clone_audio_label.setToolTip(str(path))
+
+    def _clone_settings(self) -> tuple[Path, str] | None:
+        """Validate the clone panel, reporting the first problem it finds."""
+        if self.clone_audio_path is None or not self.clone_audio_path.is_file():
+            self._show_error("Choose a reference recording for the cloned voice.")
+            return None
+        transcript = self.clone_text.toPlainText().strip()
+        if not transcript:
+            self._show_error("Enter the transcript of the reference recording.")
+            return None
+        return self.clone_audio_path, transcript
 
     def _build_sfx_tab(self) -> QWidget:
         page = QWidget()
@@ -804,8 +887,8 @@ class MainWindow(QMainWindow):
     def _update_tts_mode(self) -> None:
         self.voice_stack.setCurrentIndex(self.tts_mode.currentIndex())
 
-    def _voice_configuration(self) -> dict[str, object]:
-        return {
+    def _voice_configuration(self, reference_audio: Path | None = None) -> dict[str, object]:
+        config: dict[str, object] = {
             "mode": self.tts_mode.currentData(),
             "gender": self.gender.currentText(),
             "age": self.age.currentText(),
@@ -816,14 +899,27 @@ class MainWindow(QMainWindow):
             "steps": self.steps.value(),
             "seed": self.tts_seed.value(),
         }
+        if config["mode"] == "clone":
+            config["ref_audio"] = str(reference_audio or "")
+            config["ref_text"] = self.clone_text.toPlainText().strip()
+        return config
+
+    def _fill_preset_combo(self, combo: QComboBox) -> None:
+        """List presets under Built-in, Cloned, and Your voices headings."""
+        combo.clear()
+        combo.addItem("Select a preset…", None)
+        for section, names in self.preset_store.grouped().items():
+            combo.insertSeparator(combo.count())
+            combo.addItem(section, None)
+            header = combo.model().item(combo.count() - 1)
+            if header is not None:
+                header.setEnabled(False)
+            for name in names:
+                combo.addItem(f"   {self.preset_store.display_name(name)}", name)
 
     def _refresh_voice_presets(self, selected_name: str = "") -> None:
-        presets = self.preset_store.all()
         self.voice_preset.blockSignals(True)
-        self.voice_preset.clear()
-        self.voice_preset.addItem("Select a preset…", None)
-        for name in sorted(presets, key=str.casefold):
-            self.voice_preset.addItem(name, name)
+        self._fill_preset_combo(self.voice_preset)
         if selected_name:
             index = self.voice_preset.findData(selected_name)
             if index >= 0:
@@ -835,16 +931,12 @@ class MainWindow(QMainWindow):
     def _refresh_dialogue_preset_choices(self) -> None:
         if not hasattr(self, "dialogue_speakers"):
             return
-        preset_names = sorted(self.preset_store.all(), key=str.casefold)
         for row in range(self.dialogue_speakers.rowCount()):
             combo = self.dialogue_speakers.cellWidget(row, 1)
             if not isinstance(combo, QComboBox):
                 continue
             selected = combo.currentData()
-            combo.clear()
-            combo.addItem("Select a preset…", None)
-            for name in preset_names:
-                combo.addItem(name, name)
+            self._fill_preset_combo(combo)
             selected_index = combo.findData(selected)
             if selected_index >= 0:
                 combo.setCurrentIndex(selected_index)
@@ -916,7 +1008,21 @@ class MainWindow(QMainWindow):
                 f'A preset named "{name}" already exists. Replace it?',
             ):
                 return
-        self.preset_store.save(name, self._voice_configuration())
+        reference: Path | None = None
+        if self.tts_mode.currentData() == "clone":
+            settings = self._clone_settings()
+            if settings is None:
+                return
+            source, _ = settings
+            reference = voice_reference_path(VOICE_LIBRARY_DIR, name, source.suffix)
+            try:
+                if source.resolve() != reference.resolve():
+                    shutil.copy2(source, reference)
+            except OSError as exc:
+                self._show_error(f"Could not store the reference recording: {exc}")
+                return
+            self._set_clone_audio(reference)
+        self.preset_store.save(name, self._voice_configuration(reference))
         self._refresh_voice_presets(name)
         self.status_label.setText(f'Voice preset "{name}" saved.')
 
@@ -951,8 +1057,11 @@ class MainWindow(QMainWindow):
         config = self.preset_store.all().get(name)
         if not config:
             return
-        mode = "design" if config.get("mode") == "clone" else config.get("mode")
-        self._set_combo_data(self.tts_mode, mode)
+        self._set_combo_data(self.tts_mode, config.get("mode"))
+        if config.get("mode") == "clone":
+            reference = str(config.get("ref_audio", ""))
+            self._set_clone_audio(Path(reference) if reference else None)
+            self.clone_text.setPlainText(str(config.get("ref_text", "")))
         self._set_combo_text(self.gender, config.get("gender"))
         self._set_combo_text(self.age, config.get("age"))
         self._set_combo_text(self.pitch, config.get("pitch"))
@@ -996,9 +1105,17 @@ class MainWindow(QMainWindow):
             )
             if part
         )
+        request: dict[str, object] = {}
+        if mode == "clone":
+            settings = self._clone_settings()
+            if settings is None:
+                return
+            reference, transcript = settings
+            request = {"ref_audio": str(reference), "ref_text": transcript}
         destination = output_path(self.session_dir, "tts", "inline-emotions")
         self.tts_worker.generate(
             {
+                **request,
                 "text": normalize_emotion_tags(text),
                 "mode": mode,
                 "voice_instruction": instruction,
@@ -1069,13 +1186,18 @@ class MainWindow(QMainWindow):
                 )
                 return
             configured_name, config = speaker
-            mode = "design" if config.get("mode") == "clone" else config.get("mode", "design")
+            voice = voice_segment_from_preset(config)
+            if voice["mode"] == "clone" and not Path(voice["ref_audio"]).is_file():
+                self._show_error(
+                    f'The cloned voice for "{configured_name}" is missing its reference '
+                    "recording. Re-save that preset in the Emotional TTS tab."
+                )
+                return
             segments.append(
                 {
                     "speaker": configured_name,
                     "text": normalize_emotion_tags(text),
-                    "mode": mode,
-                    "voice_instruction": voice_instruction_from_preset(config),
+                    **voice,
                     "speed": float(config.get("speed", 1.0)),
                     "steps": int(config.get("steps", 32)),
                 }
@@ -1292,6 +1414,10 @@ class MainWindow(QMainWindow):
             QLabel#title { font-size: 26px; font-weight: 700; color: #ffffff; }
             QLabel#subtitle, QLabel#hint { color: #929bad; }
             QLabel#credit { color: #929bad; font-size: 11px; padding: 6px 0 0 0; }
+            QLabel#fileName {
+                color: #929bad; background: #171c26; border: 1px solid #30394b;
+                border-radius: 7px; padding: 7px 10px;
+            }
             QLabel#fieldHelp { color: #dce2ed; font-weight: 600; }
             QTabWidget::pane { border: 1px solid #2a3140; border-radius: 12px; top: -1px; }
             QTabBar::tab { background: #171c26; color: #9fa8ba; padding: 10px 18px; margin-right: 4px; border-radius: 8px 8px 0 0; }
@@ -1356,6 +1482,9 @@ class MainWindow(QMainWindow):
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
             QToolTip { background: #242b39; color: white; border: 1px solid #384255; }
+            QComboBox QAbstractItemView::item:disabled {
+                color: #7c869c; font-size: 11px; text-transform: uppercase;
+            }
             QDialog { background: #10131a; }
             QLabel#dialogText { color: #e9edf5; font-size: 14px; }
             QDialogButtonBox QPushButton { min-width: 92px; padding: 9px 16px; }
