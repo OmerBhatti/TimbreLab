@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import shutil
 import sys
 import tempfile
@@ -250,7 +251,7 @@ class MainWindow(QMainWindow):
         self.steps = QSpinBox()
         self.steps.setRange(8, 128)
         self.steps.setSingleStep(8)
-        self.steps.setValue(64)
+        self.steps.setValue(32)
         self.tts_seed = QSpinBox()
         self.tts_seed.setRange(0, 2_147_483_647)
         self.tts_seed.setValue(DEFAULT_GENERATION_SEED)
@@ -275,7 +276,7 @@ class MainWindow(QMainWindow):
         self._add_help_row(
             form,
             "Seed",
-            self.tts_seed,
+            self._seed_field(self.tts_seed),
             "Random starting value. Reuse the same seed and settings for repeatable speech.",
         )
         controls.addLayout(form, 1)
@@ -294,7 +295,7 @@ class MainWindow(QMainWindow):
         footer = QWidget()
         row = QHBoxLayout(footer)
         row.setContentsMargins(22, 10, 22, 16)
-        hint = QLabel("Tip: Lower Diffusion steps is faster; 64 generally gives better quality.")
+        hint = QLabel("Tip: Lower Diffusion steps is faster; higher values gives better quality but takes longer.")
         hint.setObjectName("hint")
         row.addWidget(hint)
         row.addStretch()
@@ -393,7 +394,7 @@ class MainWindow(QMainWindow):
         )
         self.sfx_prompt = QTextEdit()
         self.sfx_prompt.setPlainText(
-            "A cinematic thunder crack followed by heavy rain on a metal rooftop, realistic, no music"
+            "knocking twice on heavy wooden door in quiet room at night"
         )
         self.sfx_prompt.setPlaceholderText(
             "Example: Fast footsteps in a stone hallway, tense, distant echo, no music"
@@ -407,7 +408,7 @@ class MainWindow(QMainWindow):
 
         form = QFormLayout()
         self.duration = QDoubleSpinBox()
-        self.duration.setRange(1.0, 30.0)
+        self.duration.setRange(1.0, 300.0)
         self.duration.setValue(5.0)
         self.duration.setSuffix(" seconds")
         self.duration.setToolTip("Longer clips require more memory and generation time.")
@@ -421,7 +422,7 @@ class MainWindow(QMainWindow):
         self.sfx_steps = QSpinBox()
         self.sfx_steps.setRange(8, 256)
         self.sfx_steps.setSingleStep(8)
-        self.sfx_steps.setValue(128)
+        self.sfx_steps.setValue(32)
         self.sfx_steps.setToolTip("More steps can improve detail but take longer to render.")
         self.sfx_seed = QSpinBox()
         self.sfx_seed.setRange(0, 2_147_483_647)
@@ -447,7 +448,7 @@ class MainWindow(QMainWindow):
         self._add_help_row(
             form,
             "Seed",
-            self.sfx_seed,
+            self._seed_field(self.sfx_seed),
             "Random starting value. Reuse the same seed and settings for repeatable effects.",
         )
         layout.addLayout(form)
@@ -556,7 +557,7 @@ class MainWindow(QMainWindow):
             "Random starting value. Reuse the same seed, script, and presets for repeatable dialogue."
         )
         self.dialogue_seed.setMaximumWidth(130)
-        footer.addWidget(self.dialogue_seed)
+        footer.addWidget(self._seed_field(self.dialogue_seed))
         self.dialogue_generate = QPushButton("Generate dialogue")
         self.dialogue_generate.setObjectName("primary")
         self.dialogue_generate.setToolTip("Generate dialogue (Ctrl/Command + Enter)")
@@ -657,6 +658,25 @@ class MainWindow(QMainWindow):
         field.setToolTip(help_text)
         field.setWhatsThis(help_text)
         form.addRow(MainWindow._help_label(text, help_text), field)
+
+    def _seed_field(self, spin: QSpinBox) -> QWidget:
+        """Pair a seed spin box with a button that rolls a fresh random value."""
+        holder = QWidget()
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        randomize = QPushButton()
+        randomize.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        randomize.setFixedSize(34, 30)
+        randomize.setToolTip("Use a new random seed")
+        randomize.clicked.connect(
+            lambda: spin.setValue(random.randint(spin.minimum(), spin.maximum()))
+        )
+        row.addWidget(spin, 1)
+        row.addWidget(randomize)
+        return holder
 
     def _connect_workers(self) -> None:
         for worker in (self.tts_worker, self.sfx_worker):

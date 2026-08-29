@@ -26,7 +26,7 @@ class VoicePresetStore:
             "accent": "british accent",
             "style": "normal",
             "speed": 0.9,
-            "steps": 64,
+            "steps": 32,
             "seed": DEFAULT_SEED,
         },
         "female-narrator": {
@@ -37,7 +37,7 @@ class VoicePresetStore:
             "accent": "british accent",
             "style": "normal",
             "speed": 0.9,
-            "steps": 64,
+            "steps": 32,
             "seed": DEFAULT_SEED,
         },
     }
@@ -50,7 +50,7 @@ class VoicePresetStore:
             "accent": "canadian accent",
             "style": "normal",
             "speed": 0.95,
-            "steps": 48,
+            "steps": 32,
             "seed": DEFAULT_SEED,
         },
         "young-male-narrator": {
@@ -72,7 +72,7 @@ class VoicePresetStore:
             "accent": "american accent",
             "style": "normal",
             "speed": 0.85,
-            "steps": 64,
+            "steps": 32,
             "seed": DEFAULT_SEED,
         },
         "soft-female-whisper": {
@@ -83,7 +83,7 @@ class VoicePresetStore:
             "accent": "british accent",
             "style": "whispering",
             "speed": 0.85,
-            "steps": 48,
+            "steps": 32,
             "seed": DEFAULT_SEED,
         },
         "elderly-female-storyteller": {
@@ -94,7 +94,7 @@ class VoicePresetStore:
             "accent": "british accent",
             "style": "normal",
             "speed": 0.9,
-            "steps": 64,
+            "steps": 32,
             "seed": DEFAULT_SEED,
         },
         "energetic-female-host": {
@@ -105,7 +105,7 @@ class VoicePresetStore:
             "accent": "american accent",
             "style": "normal",
             "speed": 1.1,
-            "steps": 48,
+            "steps": 32,
             "seed": DEFAULT_SEED,
         },
     }
