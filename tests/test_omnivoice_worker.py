@@ -2,6 +2,9 @@ import pytest
 
 from audio_playground.workers.omnivoice_worker import (
     _generation_kwargs,
+    _spoken_text,
+    can_lock_voice,
+    speaker_seed,
     _estimated_forward_passes,
     _seed_random_generators,
     _validated_voice_instruction,
@@ -93,3 +96,19 @@ def test_clone_request_requires_a_transcript(tmp_path) -> None:
         _generation_kwargs(
             {"text": "Hello.", "mode": "clone", "ref_audio": str(reference), "ref_text": "  "}
         )
+
+
+def test_speaker_seed_is_stable_per_speaker_and_case_insensitive() -> None:
+    assert speaker_seed(9999, "Emma") == speaker_seed(9999, "emma")
+    assert speaker_seed(9999, "Emma") != speaker_seed(9999, "John")
+    assert speaker_seed(9999, "Emma") != speaker_seed(1234, "Emma")
+    assert 0 <= speaker_seed(2_147_483_647, "Emma") < 2_147_483_648
+
+
+def test_voice_is_locked_only_from_a_long_enough_line() -> None:
+    assert can_lock_voice([0.0] * 36_000) is True
+    assert can_lock_voice([0.0] * 12_000) is False
+
+
+def test_spoken_text_drops_inline_cues() -> None:
+    assert _spoken_text("[sigh] I wasn't expecting you. [laughter]") == "I wasn't expecting you."

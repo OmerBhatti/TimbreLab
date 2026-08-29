@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 import random
@@ -43,8 +44,13 @@ ENGLISH_INSTRUCT_ITEMS = {
 }
 
 
+def _spoken_text(text: str) -> str:
+    """The words actually audible in a line, without inline cue markup."""
+    return re.sub(r"\[[^]]+\]", " ", text).strip()
+
+
 def _estimated_forward_passes(text: str, steps: int) -> int:
-    spoken_text = re.sub(r"\[[^]]+\]", "", text)
+    spoken_text = _spoken_text(text)
     estimated_seconds = max(len(spoken_text.strip()) / 15, 1)
     chunks = 1 if estimated_seconds <= 30 else math.ceil(estimated_seconds / 15)
     return max(steps, 1) * chunks
@@ -99,6 +105,22 @@ def _fade_dialogue_waveform(waveform: Any, sample_rate: int = 24000) -> Any:
         faded[:fade_samples] *= np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
         faded[-fade_samples:] *= np.linspace(1.0, 0.0, fade_samples, dtype=np.float32)
     return faded
+
+
+def speaker_seed(base_seed: int, speaker: str) -> int:
+    """A stable per-speaker seed so one speaker sounds the same on every line.
+
+    Seeding once per request lets the RNG stream advance from line to line, so a
+    speaker drew a different voice each time they spoke.
+    """
+    digest = hashlib.sha1(speaker.casefold().encode("utf-8")).digest()
+    offset = int.from_bytes(digest[:4], "big")
+    return (int(base_seed) + offset) % 2_147_483_648
+
+
+def can_lock_voice(waveform: Any, sample_rate: int = 24000) -> bool:
+    """Whether a rendered line is long enough to clone the speaker's voice from."""
+    return len(waveform) >= int(1.5 * sample_rate)
 
 
 def _seed_random_generators(torch: Any, numpy: Any, seed: int) -> None:
@@ -173,6 +195,8 @@ def generate(request: dict[str, Any]) -> str:
 
     progress_hook = model.register_forward_hook(report_forward_pass)
     waveforms: list[Any] = []
+    # One locked voice per speaker keeps a scene consistent across its lines.
+    voice_prompts: dict[str, Any] = {}
     try:
         phase = "Synthesizing dialogue" if is_dialogue else "Synthesizing speech"
         with monitor_phase(phase, interval=10):
@@ -180,11 +204,20 @@ def generate(request: dict[str, Any]) -> str:
             for index, segment in enumerate(segments, start=1):
                 kwargs = _generation_kwargs(segment)
                 speaker = str(segment.get("speaker", "Speech"))
+                locked_voice = voice_prompts.get(speaker.casefold())
+                if locked_voice is not None:
+                    kwargs.pop("instruct", None)
+                    kwargs.pop("ref_audio", None)
+                    kwargs.pop("ref_text", None)
+                    kwargs["voice_clone_prompt"] = locked_voice
+                elif is_dialogue:
+                    _seed_random_generators(torch, np, speaker_seed(seed, speaker))
                 emit(
                     "status",
                     message=(
                         f"Synthesizing line {index}/{len(segments)} · {speaker} · "
-                        f"steps={kwargs['num_step']} · speed={kwargs['speed']:g}."
+                        f"steps={kwargs['num_step']} · speed={kwargs['speed']:g}"
+                        f"{' · locked voice' if locked_voice is not None else ''}."
                     ),
                 )
                 audio = model.generate(**kwargs)[0]
@@ -194,6 +227,23 @@ def generate(request: dict[str, Any]) -> str:
                 waveforms.append(
                     _fade_dialogue_waveform(waveform) if is_dialogue else waveform
                 )
+                if (
+                    is_dialogue
+                    and locked_voice is None
+                    and speaker.casefold() not in voice_prompts
+                    and can_lock_voice(waveform)
+                ):
+                    try:
+                        voice_prompts[speaker.casefold()] = model.create_voice_clone_prompt(
+                            (torch.from_numpy(waveform.copy()), 24000),
+                            ref_text=_spoken_text(str(segment["text"])),
+                        )
+                        emit("status", message=f"Locked {speaker}'s voice for later lines.")
+                    except Exception as exc:  # noqa: BLE001 - consistency is best-effort
+                        emit(
+                            "status",
+                            message=f"Could not lock {speaker}'s voice ({exc}); continuing.",
+                        )
     finally:
         progress_hook.remove()
     emit("progress", value=100, label="Estimated speech")
