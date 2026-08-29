@@ -133,12 +133,25 @@ class VoicePresetStore:
         self.settings.setValue(self.SETTINGS_KEY, json.dumps(presets, sort_keys=True))
         self.settings.sync()
 
-    def delete(self, name: str) -> None:
+    def is_system(self, name: str) -> bool:
+        """Built-in starter presets belong to the app and cannot be removed."""
+        return name in self.system_names()
+
+    @classmethod
+    def system_names(cls) -> frozenset[str]:
+        return frozenset(cls.DEFAULT_PRESETS) | frozenset(cls.ADDITIONAL_DEFAULT_PRESETS)
+
+    def delete(self, name: str) -> bool:
+        """Remove a user preset. Returns False when the name is protected or unknown."""
+        if self.is_system(name):
+            return False
         presets = self.all()
-        if name in presets:
-            del presets[name]
-            self.settings.setValue(self.SETTINGS_KEY, json.dumps(presets, sort_keys=True))
-            self.settings.sync()
+        if name not in presets:
+            return False
+        del presets[name]
+        self.settings.setValue(self.SETTINGS_KEY, json.dumps(presets, sort_keys=True))
+        self.settings.sync()
+        return True
 
     def ensure_defaults(self) -> None:
         """Seed built-in examples once without overwriting user configurations."""

@@ -1,32 +1,44 @@
 from __future__ import annotations
 
+import itertools
 import random
 import shutil
 import sys
 import tempfile
 import traceback
+from datetime import date
 from pathlib import Path
 
-from PyQt6.QtCore import QSettings, QTime, QUrl, Qt
-from PyQt6.QtGui import QCloseEvent, QFont, QIcon, QKeySequence, QPixmap, QRegion, QShortcut
+from PyQt6.QtCore import QSettings, QSize, QTime, QTimer, QUrl, Qt
+from PyQt6.QtGui import (
+    QCloseEvent,
+    QDesktopServices,
+    QFont,
+    QIcon,
+    QKeySequence,
+    QPixmap,
+    QRegion,
+    QShortcut,
+)
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QFrame,
     QHeaderView,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMessageBox,
     QProgressBar,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QStyle,
@@ -39,24 +51,61 @@ from PyQt6.QtWidgets import (
 
 from audio_playground.audio_utils import (
     ALL_EXPRESSION_TAGS,
-    INLINE_EMOTION_TAGS,
-    OMNIVOICE_NONVERBAL_TAGS,
     normalize_emotion_tags,
     output_path,
 )
 from audio_playground.config import (
     APP_ICON_PATH,
+    ICON_DIR,
     DEFAULT_GENERATION_SEED,
     LOGO_PATH,
     OMNIVOICE_PYTHON,
     OUTPUT_DIR,
     PRODUCT_NAME,
+    VENDOR_NAME,
+    VENDOR_URL,
+    WINDOW_BACKGROUND_RGB,
     SFX_PYTHON,
 )
+from audio_playground.macos import style_titlebar
 from audio_playground.dialogue import parse_dialogue, voice_instruction_from_preset
 from audio_playground.tag_text_edit import TagTextEdit
 from audio_playground.voice_presets import VoicePresetStore
 from audio_playground.worker_client import WorkerClient
+
+
+TTS_TIPS = (
+    "Tip: type [ in the script to search every expression.",
+    "Tip: lower Diffusion steps is faster; higher values give better quality but take longer.",
+    "Tip: save the current voice as a preset to reuse it in the Dialogue tab.",
+    "Tip: reuse the same seed with the same settings to regenerate an identical take.",
+    "Tip: press the dice next to Seed to roll a different voice performance.",
+    "Tip: place a tag wherever the delivery changes, not only at the start of a line.",
+    "Tip: Ctrl+Enter, or Command+Enter on macOS, generates from the active tab.",
+    "Tip: previews are temporary — download the ones you want to keep before closing.",
+)
+
+DIALOGUE_TIPS = (
+    "Tip: write one turn per line as Speaker: dialogue.",
+    "Tip: press Enter on a new line to autocomplete a configured speaker name.",
+    "Tip: type [ anywhere in a line to search every expression.",
+    "Tip: each speaker needs a voice preset saved in the Emotional TTS tab.",
+    "Tip: speaker names are matched without case, so emma also matches Emma.",
+    "Tip: lines render in order with a short pause and combine into one preview.",
+    "Tip: the seed drives every turn, so one value reproduces the whole scene.",
+    "Tip: dialogue needs at least two configured speakers before it can render.",
+)
+
+SFX_TIPS = (
+    "Tip: describe the scene, the material, and the space — detail helps a lot.",
+    "Tip: add realistic, no music to keep AudioLDM from scoring your effect.",
+    "Tip: clips run from 1 to 30 seconds; longer takes more memory and time.",
+    "Tip: prompt guidance near 2.5 is a good start — high values reduce variety.",
+    "Tip: more diffusion steps can add detail but render more slowly.",
+    "Tip: the same seed, prompt, and settings reproduce the same effect.",
+    "Tip: AudioLDM Small v2 downloads about 1.7 GB on its very first run.",
+    "Tip: press the dice next to Seed to explore a different take on one prompt.",
+)
 
 
 class MainWindow(QMainWindow):
@@ -69,15 +118,13 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(app_icon)
         elif not self.logo_pixmap.isNull():
             self.setWindowIcon(QIcon(self.logo_pixmap))
-        self.resize(1180, 820)
+        self.resize(1240, 860)
         self.setMinimumSize(860, 640)
         self.preset_store = VoicePresetStore(QSettings())
         self.preset_store.ensure_defaults()
         self._shutdown_complete = False
         self._shutdown_in_progress = False
         self._session_files_cleaned = False
-        self._changing_log_visibility = False
-        self._logs_auto_opened = False
         self._preview_kind = "Audio"
 
         self.session_files = tempfile.TemporaryDirectory(prefix="timbrelab-")
@@ -93,6 +140,7 @@ class MainWindow(QMainWindow):
         self.player = QMediaPlayer(self)
         self.player.setAudioOutput(self.audio_output)
         self.current_audio: Path | None = None
+        self.last_download_dir: Path | None = None
 
         self._build_ui()
         self._connect_workers()
@@ -129,6 +177,7 @@ class MainWindow(QMainWindow):
         )
         outer.addWidget(self.tabs, 1)
         outer.addWidget(self._build_player())
+        outer.addWidget(self._build_credit())
         self.setCentralWidget(root)
 
         self.generate_shortcuts: list[QShortcut] = []
@@ -185,13 +234,10 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(self.tts_text)
 
-        preset_row = QHBoxLayout()
-        preset_row.addWidget(
-            self._help_label(
-                "Voice preset",
-                "Load a saved voice configuration or save the current controls under a name.",
-            )
-        )
+        preset_holder = QWidget()
+        preset_row = QHBoxLayout(preset_holder)
+        preset_row.setContentsMargins(0, 0, 0, 0)
+        preset_row.setSpacing(8)
         self.voice_preset = QComboBox()
         self.voice_preset.setMinimumWidth(190)
         self.voice_preset.setToolTip(
@@ -201,45 +247,20 @@ class MainWindow(QMainWindow):
         self.save_voice_preset = QPushButton("Save preset…")
         self.save_voice_preset.clicked.connect(self._save_voice_preset)
         self.delete_voice_preset = QPushButton("Delete")
+        self.delete_voice_preset.setVisible(False)
         self.delete_voice_preset.clicked.connect(self._delete_voice_preset)
-        preset_row.addWidget(self.voice_preset)
+        preset_row.addWidget(self.voice_preset, 1)
         preset_row.addWidget(self.save_voice_preset)
         preset_row.addWidget(self.delete_voice_preset)
-        preset_row.addStretch()
-        layout.addLayout(preset_row)
-
-        tag_row = QHBoxLayout()
-        tag_row.addWidget(
-            self._help_label(
-                "Insert expression",
-                "Insert an OmniVoice non-verbal cue at the current text cursor position.",
-            )
-        )
-        self.emotion_tag = QComboBox()
-        self.emotion_tag.setToolTip(
-            "Choose an expression or non-verbal cue to insert into the speech text."
-        )
-        for tag in INLINE_EMOTION_TAGS:
-            self.emotion_tag.addItem(tag.removeprefix("[").removesuffix("]").title(), tag)
-        self.emotion_tag.insertSeparator(self.emotion_tag.count())
-        for tag in OMNIVOICE_NONVERBAL_TAGS:
-            label = tag.removeprefix("[").removesuffix("]").replace("-", " ").title()
-            self.emotion_tag.addItem(label, tag)
-        self.insert_emotion_tag = QPushButton("Insert tag")
-        self.insert_emotion_tag.clicked.connect(self._insert_emotion_tag)
-        tag_hint = QLabel("Tip: type [ in the script to search every expression.")
-        tag_hint.setToolTip(
-            "The dropdown includes friendly aliases and all native OmniVoice non-verbal cues."
-        )
-        tag_hint.setObjectName("hint")
-        tag_row.addWidget(self.emotion_tag)
-        tag_row.addWidget(self.insert_emotion_tag)
-        tag_row.addWidget(tag_hint)
-        tag_row.addStretch()
-        layout.addLayout(tag_row)
 
         controls = QHBoxLayout()
         form = QFormLayout()
+        self._add_help_row(
+            form,
+            "Voice preset",
+            preset_holder,
+            "Load a saved voice configuration or save the current controls under a name.",
+        )
         self.tts_mode = QComboBox()
         self.tts_mode.addItem("Design a voice", "design")
         self.tts_mode.addItem("Automatic voice", "auto")
@@ -295,10 +316,7 @@ class MainWindow(QMainWindow):
         footer = QWidget()
         row = QHBoxLayout(footer)
         row.setContentsMargins(22, 10, 22, 16)
-        hint = QLabel("Tip: Lower Diffusion steps is faster; higher values gives better quality but takes longer.")
-        hint.setObjectName("hint")
-        row.addWidget(hint)
-        row.addStretch()
+        row.addWidget(self._tip_ticker(TTS_TIPS), 1)
         self.tts_generate = QPushButton("Generate speech")
         self.tts_generate.setObjectName("primary")
         self.tts_generate.setToolTip("Generate speech (Ctrl/Command + Enter)")
@@ -459,13 +477,7 @@ class MainWindow(QMainWindow):
         footer = QWidget()
         row = QHBoxLayout(footer)
         row.setContentsMargins(22, 10, 22, 16)
-        note = QLabel(
-            "AudioLDM Small v2 is a lightweight 421M-parameter SFX model with native "
-            "Apple Metal support. The first run downloads about 1.7 GB."
-        )
-        note.setWordWrap(True)
-        note.setObjectName("hint")
-        row.addWidget(note, 1)
+        row.addWidget(self._tip_ticker(SFX_TIPS), 1)
         self.sfx_generate = QPushButton("Generate sound effect")
         self.sfx_generate.setObjectName("primary")
         self.sfx_generate.setToolTip("Generate sound effect (Ctrl/Command + Enter)")
@@ -481,12 +493,6 @@ class MainWindow(QMainWindow):
         page_layout.setSpacing(8)
 
         page_layout.addWidget(self._section_label("Speakers"))
-        speaker_hint = QLabel(
-            "Give each speaker a script name and assign one of your saved voice presets."
-        )
-        speaker_hint.setObjectName("hint")
-        page_layout.addWidget(speaker_hint)
-
         self.dialogue_speakers = QTableWidget(0, 2)
         self.dialogue_speakers.setHorizontalHeaderLabels(["Speaker name", "Voice preset"])
         self.dialogue_speakers.horizontalHeaderItem(0).setToolTip(
@@ -514,12 +520,9 @@ class MainWindow(QMainWindow):
         speaker_buttons.addStretch()
         page_layout.addLayout(speaker_buttons)
 
-        page_layout.addWidget(self._section_label("Dialogue script"))
-        script_hint = QLabel(
-            "Write one line at a time as Speaker: dialogue. Type [ for expression tags."
-        )
-        script_hint.setObjectName("hint")
-        page_layout.addWidget(script_hint)
+        script_label = self._section_label("Dialogue script")
+        script_label.setContentsMargins(0, 10, 0, 0)
+        page_layout.addWidget(script_label)
         self.dialogue_text = TagTextEdit(ALL_EXPRESSION_TAGS)
         self.dialogue_text.setPlaceholderText(
             "Arthur: [sigh] I wasn't expecting you.\nMaya: [question-en] Should I leave?"
@@ -538,12 +541,7 @@ class MainWindow(QMainWindow):
         page_layout.addWidget(self.dialogue_text, 1)
 
         footer = QHBoxLayout()
-        dialogue_note = QLabel(
-            "Lines are rendered in order with a short pause and combined into one preview."
-        )
-        dialogue_note.setObjectName("hint")
-        dialogue_note.setWordWrap(True)
-        footer.addWidget(dialogue_note, 1)
+        footer.addWidget(self._tip_ticker(DIALOGUE_TIPS), 1)
         footer.addWidget(
             self._help_label(
                 "Seed",
@@ -588,16 +586,23 @@ class MainWindow(QMainWindow):
         self.output_label = QLabel("No audio generated yet")
         self.output_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.download_button = QPushButton()
-        self.download_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)
-        )
+        self.download_button.setIcon(self._icon("download"))
+        self.download_button.setIconSize(QSize(20, 20))
         self.download_button.setFixedSize(48, 40)
         self.download_button.setEnabled(False)
+        self.download_button.setVisible(False)
         self.download_button.setToolTip("Save the temporary preview to a permanent WAV file")
         self.download_button.clicked.connect(self._download_audio)
         top.addWidget(self.play_button)
         top.addWidget(self.output_label, 1)
         top.addWidget(self.download_button)
+        self.open_folder_button = QPushButton()
+        self.open_folder_button.setIcon(self._icon("folder"))
+        self.open_folder_button.setIconSize(QSize(20, 20))
+        self.open_folder_button.setFixedSize(48, 40)
+        self.open_folder_button.setToolTip("Open the folder downloads are saved to")
+        self.open_folder_button.clicked.connect(self._open_download_folder)
+        top.addWidget(self.open_folder_button)
         layout.addLayout(top)
         bottom = QHBoxLayout()
         self.progress = QProgressBar()
@@ -659,17 +664,123 @@ class MainWindow(QMainWindow):
         field.setWhatsThis(help_text)
         form.addRow(MainWindow._help_label(text, help_text), field)
 
+    DIALOG_WIDTH = 430
+
+    def _dialog_icon(self, size: int = 46) -> QPixmap:
+        """The app mark reads better than the platform question mark."""
+        return QPixmap(str(APP_ICON_PATH)).scaled(
+            size,
+            size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+    def _dialog(self, title: str, message: str) -> tuple[QDialog, QVBoxLayout]:
+        """A themed dialog shell: app mark, message, and one fixed width."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setFixedWidth(self.DIALOG_WIDTH)
+        # Match the main window's blended titlebar instead of the light native one.
+        QTimer.singleShot(
+            0, lambda: style_titlebar(int(dialog.winId()), WINDOW_BACKGROUND_RGB)
+        )
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(22, 20, 22, 18)
+        layout.setSpacing(14)
+
+        header = QHBoxLayout()
+        header.setSpacing(14)
+        icon = QLabel()
+        icon.setPixmap(self._dialog_icon())
+        icon.setFixedSize(46, 46)
+        header.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
+        text = QLabel(message)
+        text.setWordWrap(True)
+        text.setObjectName("dialogText")
+        header.addWidget(text, 1)
+        layout.addLayout(header)
+        return dialog, layout
+
+    def _confirm(self, title: str, question: str) -> bool:
+        dialog, layout = self._dialog(title, question)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No
+        )
+        confirm = buttons.button(QDialogButtonBox.StandardButton.Yes)
+        confirm.setObjectName("primary")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _alert(self, message: str) -> None:
+        dialog, layout = self._dialog(PRODUCT_NAME, message)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("primary")
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _ask_text(self, title: str, label: str, text: str = "") -> tuple[str, bool]:
+        dialog, layout = self._dialog(title, label)
+        field = QLineEdit(text)
+        field.selectAll()
+        layout.addWidget(field)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("primary")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        field.returnPressed.connect(dialog.accept)
+        field.setFocus()
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        return field.text(), accepted
+
+    def _build_credit(self) -> QLabel:
+        year = date.today().year
+        credit = QLabel(
+            f'<a href="{VENDOR_URL}" style="color: #929bad; text-decoration: none;">'
+            f"© {year} {VENDOR_NAME}. All rights reserved.</a>"
+        )
+        credit.setObjectName("credit")
+        credit.setOpenExternalLinks(True)
+        credit.setToolTip(VENDOR_URL)
+        credit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        return credit
+
+    def _tip_ticker(self, tips: tuple[str, ...]) -> QLabel:
+        """One hint line that cycles through the given tips."""
+        label = QLabel(tips[0])
+        label.setObjectName("hint")
+        label.setWordWrap(True)
+        counter = itertools.cycle(tips[1:] + tips[:1])
+        timer = QTimer(label)
+        timer.setInterval(10000)
+        timer.timeout.connect(lambda: label.setText(next(counter)))
+        timer.start()
+        return label
+
+    @staticmethod
+    def _icon(name: str) -> QIcon:
+        return QIcon(str(ICON_DIR / f"{name}.svg"))
+
     def _seed_field(self, spin: QSpinBox) -> QWidget:
         """Pair a seed spin box with a button that rolls a fresh random value."""
         holder = QWidget()
+        holder.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         row = QHBoxLayout(holder)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(6)
         randomize = QPushButton()
-        randomize.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        randomize.setIcon(self._icon("shuffle"))
+        randomize.setIconSize(QSize(17, 17))
+        randomize.setFixedWidth(36)
+        # Stretch to the spin box height, which the stylesheet decides later.
+        randomize.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
         )
-        randomize.setFixedSize(34, 30)
         randomize.setToolTip("Use a new random seed")
         randomize.clicked.connect(
             lambda: spin.setValue(random.randint(spin.minimum(), spin.maximum()))
@@ -718,7 +829,7 @@ class MainWindow(QMainWindow):
             if index >= 0:
                 self.voice_preset.setCurrentIndex(index)
         self.voice_preset.blockSignals(False)
-        self.delete_voice_preset.setEnabled(self.voice_preset.currentData() is not None)
+        self._sync_delete_preset_button()
         self._refresh_dialogue_preset_choices()
 
     def _refresh_dialogue_preset_choices(self) -> None:
@@ -793,19 +904,17 @@ class MainWindow(QMainWindow):
 
     def _save_voice_preset(self) -> None:
         current_name = self.voice_preset.currentData() or ""
-        name, accepted = QInputDialog.getText(
-            self, "Save voice preset", "Preset name:", text=current_name
+        name, accepted = self._ask_text(
+            "Save voice preset", "Preset name:", current_name
         )
         name = name.strip()
         if not accepted or not name:
             return
         if name in self.preset_store.all() and name != current_name:
-            answer = QMessageBox.question(
-                self,
+            if not self._confirm(
                 "Replace voice preset?",
                 f'A preset named "{name}" already exists. Replace it?',
-            )
-            if answer != QMessageBox.StandardButton.Yes:
+            ):
                 return
         self.preset_store.save(name, self._voice_configuration())
         self._refresh_voice_presets(name)
@@ -815,18 +924,28 @@ class MainWindow(QMainWindow):
         name = self.voice_preset.currentData()
         if not name:
             return
-        answer = QMessageBox.question(
-            self, "Delete voice preset?", f'Delete the voice preset "{name}"?'
-        )
-        if answer != QMessageBox.StandardButton.Yes:
+        if self.preset_store.is_system(name):
+            self.status_label.setText(f'"{name}" is a built-in preset and cannot be deleted.')
             return
-        self.preset_store.delete(name)
+        if not self._confirm(
+            "Delete voice preset?", f'Delete the voice preset "{name}"?'
+        ):
+            return
+        if not self.preset_store.delete(name):
+            self.status_label.setText(f'Could not delete "{name}".')
+            return
         self._refresh_voice_presets()
         self.status_label.setText(f'Voice preset "{name}" deleted.')
 
+    def _sync_delete_preset_button(self) -> None:
+        name = self.voice_preset.currentData()
+        self.delete_voice_preset.setVisible(
+            name is not None and not self.preset_store.is_system(name)
+        )
+
     def _apply_selected_voice_preset(self, _index: int) -> None:
         name = self.voice_preset.currentData()
-        self.delete_voice_preset.setEnabled(name is not None)
+        self._sync_delete_preset_button()
         if not name:
             return
         config = self.preset_store.all().get(name)
@@ -858,14 +977,6 @@ class MainWindow(QMainWindow):
         index = combo.findData(value)
         if index >= 0:
             combo.setCurrentIndex(index)
-
-    def _insert_emotion_tag(self) -> None:
-        cursor = self.tts_text.textCursor()
-        if cursor.hasSelection():
-            cursor.setPosition(cursor.selectionStart())
-        cursor.insertText(f"{self.emotion_tag.currentData()} ")
-        self.tts_text.setTextCursor(cursor)
-        self.tts_text.setFocus()
 
     def _generate_tts(self) -> None:
         text = self.tts_text.toPlainText().strip()
@@ -1000,10 +1111,6 @@ class MainWindow(QMainWindow):
         self.dialogue_generate.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
         self.stop_button.setVisible(busy)
-        if busy and not self.log_toggle.isChecked():
-            self._set_logs_checked(True, automatic=True)
-        elif not busy and self._logs_auto_opened:
-            self._set_logs_checked(False, automatic=True)
         if busy:
             self.progress.setRange(0, 0)
             self.progress.setFormat("Starting…")
@@ -1030,18 +1137,9 @@ class MainWindow(QMainWindow):
             self.sfx_worker.cancel()
 
     def _toggle_logs(self, visible: bool) -> None:
-        if not self._changing_log_visibility:
-            self._logs_auto_opened = False
+        """Logs stay hidden until the user asks for them."""
         self.log_output.setVisible(visible)
         self.log_toggle.setText("Hide logs" if visible else "Show logs")
-
-    def _set_logs_checked(self, visible: bool, automatic: bool = False) -> None:
-        self._changing_log_visibility = True
-        try:
-            self._logs_auto_opened = automatic and visible
-            self.log_toggle.setChecked(visible)
-        finally:
-            self._changing_log_visibility = False
 
     def _append_log(self, message: str) -> None:
         clean_message = message.strip()
@@ -1065,6 +1163,7 @@ class MainWindow(QMainWindow):
         )
         self.play_button.setEnabled(True)
         self.download_button.setEnabled(True)
+        self.download_button.setVisible(True)
         self.status_label.setText("Generated. Preview is temporary until downloaded.")
         self.player.play()
 
@@ -1095,16 +1194,20 @@ class MainWindow(QMainWindow):
             shutil.copy2(self.current_audio, destination)
         except OSError as exc:
             self.status_label.setText("Download failed")
-            QMessageBox.critical(
-                self, PRODUCT_NAME, f"Could not download audio: {exc}"
-            )
+            self._alert(f"Could not download audio: {exc}")
             return
+        self.last_download_dir = destination.parent
         self.status_label.setText(f"Downloaded to {destination}")
         self._append_log(f"Audio downloaded to {destination}")
 
+    def _open_download_folder(self) -> None:
+        folder = self.last_download_dir or OUTPUT_DIR
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
     def _show_error(self, message: str) -> None:
         self.status_label.setText("Generation failed")
-        QMessageBox.critical(self, PRODUCT_NAME, message)
+        self._alert(message)
 
     def _toggle_playback(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -1179,12 +1282,16 @@ class MainWindow(QMainWindow):
         self.session_files.cleanup()
 
     def _apply_theme(self) -> None:
-        self.setStyleSheet(
-            """
+        arrows = {
+            "CHEVRON_UP": (ICON_DIR / "chevron-up.svg").as_posix(),
+            "CHEVRON_DOWN": (ICON_DIR / "chevron-down.svg").as_posix(),
+        }
+        theme = """
             QMainWindow, QWidget { background: #10131a; color: #e9edf5; }
             QLabel { background: transparent; }
             QLabel#title { font-size: 26px; font-weight: 700; color: #ffffff; }
             QLabel#subtitle, QLabel#hint { color: #929bad; }
+            QLabel#credit { color: #929bad; font-size: 11px; padding: 6px 0 0 0; }
             QLabel#fieldHelp { color: #dce2ed; font-weight: 600; }
             QTabWidget::pane { border: 1px solid #2a3140; border-radius: 12px; top: -1px; }
             QTabBar::tab { background: #171c26; color: #9fa8ba; padding: 10px 18px; margin-right: 4px; border-radius: 8px 8px 0 0; }
@@ -1196,6 +1303,26 @@ class MainWindow(QMainWindow):
             }
             QTextEdit:focus, QLineEdit:focus, QComboBox:focus,
             QSpinBox:focus, QDoubleSpinBox:focus { border-color: #806cff; }
+            QSpinBox, QDoubleSpinBox { padding-right: 24px; }
+            QSpinBox::up-button, QDoubleSpinBox::up-button {
+                subcontrol-origin: border; subcontrol-position: top right;
+                width: 22px; margin: 1px 1px 0 0; border-top-right-radius: 6px;
+                background: #1f2632; border-left: 1px solid #30394b;
+            }
+            QSpinBox::down-button, QDoubleSpinBox::down-button {
+                subcontrol-origin: border; subcontrol-position: bottom right;
+                width: 22px; margin: 0 1px 1px 0; border-bottom-right-radius: 6px;
+                background: #1f2632; border-left: 1px solid #30394b;
+                border-top: 1px solid #262e3c;
+            }
+            QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+            QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #2b3444; }
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+                image: url(CHEVRON_UP); width: 9px; height: 9px;
+            }
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+                image: url(CHEVRON_DOWN); width: 9px; height: 9px;
+            }
             QTableWidget {
                 background: #11151d; border: 1px solid #293244; border-radius: 7px;
                 gridline-color: #293244; selection-background-color: #252e40;
@@ -1229,5 +1356,10 @@ class MainWindow(QMainWindow):
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
             QToolTip { background: #242b39; color: white; border: 1px solid #384255; }
+            QDialog { background: #10131a; }
+            QLabel#dialogText { color: #e9edf5; font-size: 14px; }
+            QDialogButtonBox QPushButton { min-width: 92px; padding: 9px 16px; }
             """
-        )
+        for placeholder, path in arrows.items():
+            theme = theme.replace(placeholder, path)
+        self.setStyleSheet(theme)

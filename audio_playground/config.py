@@ -8,10 +8,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = Path(os.environ.get("AUDIO_PLAYGROUND_OUTPUT_DIR", PROJECT_ROOT / "outputs"))
 LOGO_PATH = PROJECT_ROOT / "assets" / "timbrelab-logo.png"
 APP_ICON_PATH = PROJECT_ROOT / "assets" / "timbrelab-icon.png"
+ICON_DIR = PROJECT_ROOT / "assets" / "icons"
 WINDOW_BACKGROUND = "#10131a"
 WINDOW_BACKGROUND_RGB = (0x10 / 255, 0x13 / 255, 0x1a / 255)
 DEFAULT_GENERATION_SEED = 99999
 PRODUCT_NAME = "TimbreLab"
+VENDOR_NAME = "TensorPeak Labs"
+VENDOR_URL = "https://timbrelab.tensorpeak.org"
 
 
 def worker_python(environment_name: str) -> Path:

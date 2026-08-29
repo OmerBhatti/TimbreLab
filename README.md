@@ -116,9 +116,9 @@ You can also use the installed console entry point:
 The existing `ai-audio-playground` command and `audio_playground` Python module
 remain available for backward compatibility.
 
-The application opens maximized. Hover a field marked with `ⓘ`, or the field
-itself, for a concise explanation of its behavior. Use the normal window control
-to restore a smaller resizable window.
+The application opens in a resizable 1240×860 window. Hover a field marked with
+`ⓘ`, or the field itself, for a concise explanation of its behavior. Maximize it
+with the normal window control if you want more room.
 
 The first generation with either engine may download pretrained weights. Live
 status, estimated progress, and detailed logs appear in the bottom panel. The
@@ -167,7 +167,8 @@ On first launch, the app creates editable starter presets. Each starts with seed
 | `energetic-female-host` | Female, young adult, high pitch, American accent, normal, speed 1.1, 48 steps |
 
 Existing presets with these names are preserved. Starter presets are installed
-only once, so deleting one does not make it reappear. Presets created with the
+only once and cannot be deleted: **Delete** is hidden while one of them is
+selected. They stay editable, so saving over a starter name keeps your version. Presets created with the
 previous default seed are migrated once from `42` to `9999`; other custom seeds
 remain unchanged.
 

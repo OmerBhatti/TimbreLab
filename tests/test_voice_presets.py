@@ -43,9 +43,9 @@ def test_voice_preset_store_seeds_defaults_once_without_overwriting_user_values(
         VoicePresetStore.ADDITIONAL_DEFAULT_PRESETS["deep-male-announcer"]
     )
 
-    store.delete("female-narrator")
+    assert store.delete("female-narrator") is False
     store.ensure_defaults()
-    assert "female-narrator" not in store.all()
+    assert "female-narrator" in store.all()
 
 
 def test_existing_users_receive_only_the_new_default_preset_batch(tmp_path) -> None:
@@ -100,3 +100,25 @@ def test_previous_default_seed_is_migrated_once(tmp_path) -> None:
     store.save("Intentionally 42", {"mode": "design", "seed": 42})
     store.ensure_defaults()
     assert store.all()["Intentionally 42"]["seed"] == 42
+
+
+def test_system_presets_cannot_be_deleted(tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    store = VoicePresetStore(settings)
+    store.ensure_defaults()
+
+    for name in store.system_names():
+        assert store.is_system(name)
+        assert store.delete(name) is False
+        assert name in store.all()
+
+
+def test_user_presets_can_still_be_deleted(tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    store = VoicePresetStore(settings)
+    store.save("my-voice", {"mode": "design", "seed": 7})
+
+    assert store.is_system("my-voice") is False
+    assert store.delete("my-voice") is True
+    assert "my-voice" not in store.all()
+    assert store.delete("my-voice") is False
